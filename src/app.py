@@ -73,6 +73,7 @@ with st.sidebar:
 
     st.write('---')
     st.write('### Delete run')
+    st.session_state.num_runs = len(db.get_runs())
     delete_run = st.selectbox('Select run to delete', db.get_runs())
     delete_button = st.button('delete run')
     delete_all_button = st.button('delete all runs')
@@ -80,18 +81,24 @@ with st.sidebar:
     if delete_button:
         print(f'deleting run: {delete_run}')
         db.delete_run(delete_run)
+        # update zip
+        if len(db.get_runs()) > 0:
+            db.zip_results()
         # rerun to update selectbox
         st.experimental_rerun()
 
     if delete_all_button:
         print(f'deleting all runs')
         db.clear_db()
+        # remove zip
+        if os.path.exists('results.zip'):
+            os.remove('results.zip')
         # rerun to update selectbox
         st.experimental_rerun()
 
 
 
-    if os.path.exists('results.zip'):
+    if os.path.exists('results.zip') and (st.session_state.num_runs > 0):
         db.zip_results()
         st.write('---')
         st.write('### Download results')
@@ -267,6 +274,7 @@ if 'results' in st.session_state:
     if save_button:
         print(f'saving run: {save_button}')
         db.add_run(st.session_state.results)
+        db.zip_results()
         # rerun to update selectbox
         st.experimental_rerun()
 
