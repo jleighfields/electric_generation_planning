@@ -9,6 +9,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import db
+import os
 
 
 sns.set_style("white")
@@ -72,7 +73,6 @@ with st.sidebar:
 
     st.write('---')
     st.write('### Delete run')
-    st.session_state.num_runs = len(db.get_runs())
     delete_run = st.selectbox('Select run to delete', db.get_runs())
     delete_button = st.button('delete run')
     delete_all_button = st.button('delete all runs')
@@ -91,7 +91,7 @@ with st.sidebar:
 
 
 
-    if st.session_state.num_runs > 0:
+    if os.path.exists('results.zip'):
         db.zip_results()
         st.write('---')
         st.write('### Download results')

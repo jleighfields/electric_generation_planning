@@ -272,7 +272,7 @@ def run_lp(run_name, inputs):
             objective.SetCoefficient(wind_gen[h], wind_co2_ton_per_mwh)
             # assume outside energy is worse than gas
             if use_outside_energy:
-                objective.SetCoefficient(outside_energy[h], 1.5 * gas_co2_ton_per_mwh)
+                objective.SetCoefficient(outside_energy[h], 2 * gas_co2_ton_per_mwh)
 
     for h in df.index:
         # disincentivize charging and discharging at the same time
