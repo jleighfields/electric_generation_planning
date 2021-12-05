@@ -72,6 +72,7 @@ with st.sidebar:
 
     st.write('---')
     st.write('### Delete run')
+    st.session_state.num_runs = len(db.get_runs())
     delete_run = st.selectbox('Select run to delete', db.get_runs())
     delete_button = st.button('delete run')
     delete_all_button = st.button('delete all runs')
@@ -90,7 +91,7 @@ with st.sidebar:
 
 
 
-    if 'results' in st.session_state:
+    if st.session_state.num_runs > 0:
         db.zip_results()
         st.write('---')
         st.write('### Download results')
