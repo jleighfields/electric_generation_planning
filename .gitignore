@@ -127,3 +127,14 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+*csv/
+*.joblib
+*.sqlite
+*.zip
+*__pycache__/
+*.DS_store
+*gen_load*
+*profiles_save.py
+.idea/
