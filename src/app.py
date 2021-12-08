@@ -15,6 +15,13 @@ import os
 sns.set_style("white")
 sns.set_palette("colorblind")
 
+
+########################################################
+# flush output to console during rerun for docker
+########################################################
+
+print('', flush=True)
+
 ########################################################
 # set up db
 ########################################################
@@ -257,9 +264,9 @@ Adjustments can be made to amount of capacity that can be installed, peak load, 
 Once the inputs are set clicking the create run button will start the optimization, it will take a minute to return results.
 There will be a running icon in upper right hand corner to let you know the optimization is running.
 When the results are available they are displayed in the main panel.  The save button will save the run.
-The results will be available for download after they have been saved.  The download button will be displayed below the 
+The results will be available for download after they have been saved.  The download button will be displayed below the
 Delete Run section after the results have been saved.
-The run can be deleted by using the delete button at the bottom of the left side panel. 
+The run can be deleted by using the delete button at the bottom of the left side panel.
 Metrics showing how much generation is needed, costs, and generation information are displayed below.
 A plot showing the hourly results will be displayed below the run metrics.
 Below the plot the input parameters are shown so the inputs can be verified.

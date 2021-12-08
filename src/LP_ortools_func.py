@@ -469,7 +469,8 @@ def run_lp(run_name, inputs):
 
     total_time_1 = time.time()
     print('total time to build, solve, and verify (minutes): {0:,.2f}\n'.format((total_time_1 - total_time_0) / 60))
-
+    print('\n', flush=True)
+    
     # return dictionary for displaying results
     return {'run_name': run_name,
             'inputs': inputs,

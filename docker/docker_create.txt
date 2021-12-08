@@ -1,0 +1,8 @@
+# build image
+docker build -t streamlit_elect_gen:latest -f docker/Dockerfile .
+
+# list images
+docker image ls
+
+# run container
+docker run -p 8501:8501 streamlit_elect_gen:latest
