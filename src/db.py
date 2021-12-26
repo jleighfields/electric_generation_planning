@@ -13,13 +13,11 @@ class ResultsDB:
 
 
     def clear_db(self):
-        conn = None
         try:
             cur = self.db.cursor()
             sql_text = "SELECT name FROM sqlite_master WHERE type='table';"
             tables = cur.execute(sql_text).fetchall()
             tables = [t[0] for t in tables]
-            print(f'tables: {tables}')
             for table_name in self.table_names:
                 if table_name in tables:
                     sql_text = "DELETE from {table}".format(**{'table': table_name})
@@ -97,10 +95,7 @@ class ResultsDB:
         sql_text = "SELECT name FROM sqlite_master WHERE type='table';"
         tables = cur.execute(sql_text).fetchall()
         tables = [t[0] for t in tables]
-        print('tables in get_runs:')
-        print(tables)
         if 'inputs' in tables:
-            print('get_runs in if')
             sql_text = "select run_name from inputs"
             temp_df = pd.read_sql_query(sql_text, self.db)
             return temp_df.run_name.unique()
@@ -120,7 +115,6 @@ class ResultsDB:
             sql_text = "SELECT name FROM sqlite_master WHERE type='table';"
             tables = cur.execute(sql_text).fetchall()
             tables = [t[0] for t in tables]
-            print(f'tables: {tables}')
             for table_name in self.table_names:
                 if table_name in tables:
                     sql_text = "SELECT * from {table}".format(**{'table': table_name})

@@ -83,8 +83,6 @@ with st.sidebar:
     st.write('---')
     st.write('### Delete run')
 
-    print('db.get_runs:')
-    print(st.session_state.db.get_runs())
     st.session_state.num_runs = len(st.session_state.db.get_runs())
     delete_run = st.selectbox('Select run to delete', st.session_state.db.get_runs())
     delete_button = st.button('delete run')
@@ -329,7 +327,7 @@ if 'results' in st.session_state:
         plot_hourly(st.session_state.results['final_df'], start_date, num_days)
         st.pyplot(fig=plt)
     except:
-        print('plot error')
+        print('plot except')
 
     st.write('---')
     st.write('### Inputs')
