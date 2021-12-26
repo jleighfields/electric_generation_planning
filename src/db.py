@@ -7,25 +7,15 @@ import shutil
 class ResultsDB:
 
     def __init__(self):
-        self.db_name = 'results.sqlite'
+        self.db = sqlite3.connect(":memory:")
         self.table_names = ['inputs', 'cap_mw', 'metrics', 'final_df']
 
-        conn = None
-        try:
-            conn = sqlite3.connect(self.db_name)
-        except Exception as e:
-            print('Error thrown during create_db()')
-            print(e)
-        finally:
-            if conn:
-                conn.close()
 
 
     def clear_db(self):
         conn = None
         try:
-            conn = sqlite3.connect(self.db_name)
-            cur = conn.cursor()
+            cur = self.db.cursor()
             sql_text = "SELECT name FROM sqlite_master WHERE type='table';"
             tables = cur.execute(sql_text).fetchall()
             tables = [t[0] for t in tables]
@@ -35,15 +25,14 @@ class ResultsDB:
                     sql_text = "DELETE from {table}".format(**{'table': table_name})
                     cur.execute(sql_text)
 
-            conn.commit()
             cur.close()
 
         except Exception as e:
             print('Error thrown during delete_run')
             print(e)
         finally:
-            if conn:
-                conn.close()
+            if cur:
+                cur.close()
 
 
     def add_run(self, results):
@@ -63,10 +52,7 @@ class ResultsDB:
             final_df
         '''
 
-        conn = None
         try:
-            conn = sqlite3.connect(self.db_name)
-
             if results['run_name'] in self.get_runs():
                 print(f'deleting old run {results["run_name"]}')
                 self.delete_run(results["run_name"])
@@ -80,45 +66,39 @@ class ResultsDB:
                     df = results[table_name].copy()
                     df['run_name'] = results['run_name']
                     df.set_index('run_name', inplace=True)
-                df.to_sql(name=table_name, con=conn, if_exists='append', index=True)
+                df.to_sql(name=table_name, con=self.db, if_exists='append', index=True)
 
         except Exception as e:
             print('Error thrown during add run data')
             print(e)
-        finally:
-            if conn:
-                conn.close()
+
 
 
     def delete_run(self, run):
-        conn = None
         try:
-            conn = sqlite3.connect(self.db_name)
-            cur = conn.cursor()
+            cur = self.db.cursor()
             for table_name in self.table_names:
                 sql_text = "DELETE from {table} WHERE run_name = ?".format(**{'table': table_name})
                 cur.execute(sql_text, (run,))
 
-            conn.commit()
             cur.close()
 
         except Exception as e:
             print('Error thrown during delete_run')
             print(e)
         finally:
-            if conn:
-                conn.close()
+            if cur:
+                cur.close()
 
 
     def get_runs(self):
-        conn = sqlite3.connect(self.db_name)
-        cur = conn.cursor()
+        cur = self.db.cursor()
         sql_text = "SELECT name FROM sqlite_master WHERE type='table';"
         tables = cur.execute(sql_text).fetchall()
         tables = [t[0] for t in tables]
         if 'inputs' in tables:
             sql_text = "select run_name from inputs"
-            temp_df = pd.read_sql_query(sql_text, conn)
+            temp_df = pd.read_sql_query(sql_text, self.db)
             return temp_df.run_name.unique()
         else:
             return []
@@ -131,10 +111,8 @@ class ResultsDB:
             shutil.rmtree(zip_loc)
         os.mkdir(zip_loc)
 
-        conn = None
         try:
-            conn = sqlite3.connect(self.db_name)
-            cur = conn.cursor()
+            cur = self.db.cursor()
             sql_text = "SELECT name FROM sqlite_master WHERE type='table';"
             tables = cur.execute(sql_text).fetchall()
             tables = [t[0] for t in tables]
@@ -143,7 +121,7 @@ class ResultsDB:
                 if table_name in tables:
                     sql_text = "SELECT * from {table}".format(**{'table': table_name})
                     save_path = f'{zip_loc}/{table_name}.csv'
-                    pd.read_sql_query(sql_text, conn).to_csv(save_path)
+                    pd.read_sql_query(sql_text, self.db).to_csv(save_path)
 
             shutil.make_archive('results', 'zip', zip_loc)
 
@@ -151,18 +129,16 @@ class ResultsDB:
             print('Error thrown during delete_run')
             print(e)
         finally:
-            if conn:
-                conn.close()
+            if cur:
+                cur.close()
 
     def print_head(self):
         for table_name in self.table_names:
-            conn = sqlite3.connect(self.db_name)
             sql_text = "select * from {table}".format(**{'table': table_name})
-            temp_df = pd.read_sql_query(sql_text, conn)
+            temp_df = pd.read_sql_query(sql_text, self.db)
             print(f'table: {table_name}')
             print(temp_df.head())
             print('\n')
-            conn.close()
 
 
 if __name__ == '__main__':
@@ -174,6 +150,7 @@ if __name__ == '__main__':
     import datetime
     from joblib import load
 
+    # run LP_ortools_func.py to get joblib files
     results = load('results.joblib')
     results2 = load('results2.joblib')
 
