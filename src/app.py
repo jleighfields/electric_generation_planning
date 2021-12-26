@@ -26,7 +26,9 @@ print('', flush=True)
 # set up db
 ########################################################
 
-db = db.ResultsDB()
+if not ('db' in st.session_state):
+    print('creating database')
+    st.session_state.db = db.ResultsDB()
 
 ########################################################
 # set up inputs sidebar
@@ -80,23 +82,26 @@ with st.sidebar:
 
     st.write('---')
     st.write('### Delete run')
-    st.session_state.num_runs = len(db.get_runs())
-    delete_run = st.selectbox('Select run to delete', db.get_runs())
+
+    print('db.get_runs:')
+    print(st.session_state.db.get_runs())
+    st.session_state.num_runs = len(st.session_state.db.get_runs())
+    delete_run = st.selectbox('Select run to delete', st.session_state.db.get_runs())
     delete_button = st.button('delete run')
     delete_all_button = st.button('delete all runs')
 
     if delete_button:
         print(f'deleting run: {delete_run}')
-        db.delete_run(delete_run)
+        st.session_state.db.delete_run(delete_run)
         # update zip
-        if len(db.get_runs()) > 0:
-            db.zip_results()
+        if len(st.session_state.db.get_runs()) > 0:
+            st.session_state.db.zip_results()
         # rerun to update selectbox
         st.experimental_rerun()
 
     if delete_all_button:
         print(f'deleting all runs')
-        db.clear_db()
+        st.session_state.db.clear_db()
         # remove zip
         if os.path.exists('results.zip'):
             os.remove('results.zip')
@@ -106,7 +111,7 @@ with st.sidebar:
 
 
     if os.path.exists('results.zip') and (st.session_state.num_runs > 0):
-        db.zip_results()
+        st.session_state.db.zip_results()
         st.write('---')
         st.write('### Download results')
         with open('results.zip', 'rb') as fp:
@@ -280,8 +285,8 @@ if 'results' in st.session_state:
 
     if save_button:
         print(f'saving run: {save_button}')
-        db.add_run(st.session_state.results)
-        db.zip_results()
+        st.session_state.db.add_run(st.session_state.results)
+        st.session_state.db.zip_results()
         # rerun to update selectbox
         st.experimental_rerun()
 

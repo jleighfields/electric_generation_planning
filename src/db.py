@@ -52,6 +52,7 @@ class ResultsDB:
             final_df
         '''
 
+
         try:
             if results['run_name'] in self.get_runs():
                 print(f'deleting old run {results["run_name"]}')
@@ -96,7 +97,10 @@ class ResultsDB:
         sql_text = "SELECT name FROM sqlite_master WHERE type='table';"
         tables = cur.execute(sql_text).fetchall()
         tables = [t[0] for t in tables]
+        print('tables in get_runs:')
+        print(tables)
         if 'inputs' in tables:
+            print('get_runs in if')
             sql_text = "select run_name from inputs"
             temp_df = pd.read_sql_query(sql_text, self.db)
             return temp_df.run_name.unique()
@@ -121,7 +125,10 @@ class ResultsDB:
                 if table_name in tables:
                     sql_text = "SELECT * from {table}".format(**{'table': table_name})
                     save_path = f'{zip_loc}/{table_name}.csv'
-                    pd.read_sql_query(sql_text, self.db).to_csv(save_path)
+                    df = pd.read_sql_query(sql_text, self.db)
+                    df.to_csv(save_path)
+                    print(f'zipping table: {table_name}')
+                    print(f'n_rows: {df.shape[0]}')
 
             shutil.make_archive('results', 'zip', zip_loc)
 
@@ -160,6 +167,7 @@ if __name__ == '__main__':
     print('\n################################')
     print('ADD test run')
     test_db = ResultsDB()
+    print(type(test_db).__name__)
     test_db.clear_db()
     test_db.add_run(results)
     test_db.add_run(results2)
