@@ -79,6 +79,18 @@ with st.sidebar:
 
     run_button = st.button('create run')
 
+    if 'results' in st.session_state:
+        st.write('---')
+        st.write(f"## Showings results from run: {st.session_state.results['run_name']}")
+        st.write("Existing runs with the same name will be over written")
+        save_button = st.button('Save run')
+
+        if save_button:
+            print(f'saving run: {save_button}')
+            st.session_state.db.add_run(st.session_state.results)
+            st.session_state.db.zip_results()
+            # rerun to update selectbox
+            st.experimental_rerun()
 
     st.write('---')
     st.write('### Delete run')
@@ -220,6 +232,9 @@ if run_button:
 
     st.session_state.results = run_lp(run_name=st.session_state.run_name,  inputs=st.session_state.inputs)
 
+    # rerun to show save button
+    st.experimental_rerun()
+
 
 ########################################################
 # function to plot hourly data
@@ -258,36 +273,37 @@ def plot_hourly(final_df, start_date, num_days):
 ########################################################
 # display results and plot
 ########################################################
-st.write('# Electricity generation planning')
-st.write('## Introduction and instructions')
+# st.write('# Electricity generation planning model')
+# st.write('## Introduction')
 st.write('''
-This tools builds the optimal amount electricity generation resource (wind, solar, batteries, and gas) to serve load.
-The user can adjust input parameters in left side panel.
-Adjustments can be made to amount of capacity that can be installed, peak load, resource costs, etc.
-Once the inputs are set clicking the create run button will start the optimization, it will take a minute to return results.
-There will be a running icon in upper right hand corner to let you know the optimization is running.
-When the results are available they are displayed in the main panel.  The save button will save the run.
-The results will be available for download after they have been saved.  The download button will be displayed below the
-Delete Run section after the results have been saved.
-The run can be deleted by using the delete button at the bottom of the left side panel.
-Metrics showing how much generation is needed, costs, and generation information are displayed below.
-A plot showing the hourly results will be displayed below the run metrics.
+# Electricity generation planning model
+## Introduction
+This tool models the cost and carbon emissions for scenarios that optimize the amount of electricity generation resource (wind, solar, batteries, and gas) to serve the electricity use (load). 
+The loads are based on the forecasted requirements of four northern Colorado communities. 
+The calculations are based on simplified modeling sourced from detailed utility resource software tools. 
+Users can vary the available capacity and costs by generation type, optimize for either cost or carbon emissions and visualize stress tests of limited renewable resource availability. 
+
+## Instructions
+The user can adjust input parameters in the left side panel. 
+Adjustments can be made to the allowable range of capacity that can be installed, the cost of each resource type, limits on gas capacity and lifecycle carbon value. 
+Default values represent reasonable starting points. 
+
+Once the inputs are set, clicking the **create run** button will start the optimization. 
+It will take approximately a minute to return results. 
+There will be a running icon in the upper right hand corner to let you know the optimization is running. 
+
+Results are displayed in the main panel. The **save run** button will be displayed in the left side panel after a run is created.
+The results will be available for download after they have been saved. 
+The download button will be displayed below the Delete Run section after the results have been saved. 
+The run can be deleted by using the delete button at the bottom of the left side panel. 
+
+Results include values for how much of each generation type is needed (megawatts), costs (total, generation and carbon in millions of dollars), and generation information are displayed below (excess, renewable, gas, emergency and carbon emissions). 
+A plot showing the hourly results for up to 21 days will be displayed below the run metrics. 
 Below the plot the input parameters are shown so the inputs can be verified.
 ''')
 
 if 'results' in st.session_state:
     st.write('---')
-    st.write(f"## Showings results from run: {st.session_state.results['run_name']}")
-    st.write("Existing runs with the same name will be over writtten")
-    save_button = st.button('Save run')
-
-    if save_button:
-        print(f'saving run: {save_button}')
-        st.session_state.db.add_run(st.session_state.results)
-        st.session_state.db.zip_results()
-        # rerun to update selectbox
-        st.experimental_rerun()
-
     st.write("### Resource capacities")
     cap_mw = st.session_state.results['cap_mw']
     r1col1, r1col2, r1col3, r1col4 = st.columns(4)
