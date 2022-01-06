@@ -295,6 +295,7 @@ There will be a running icon in the upper right hand corner to let you know the 
 Results are displayed in the main panel. The **save run** button will be displayed in the left side panel after a run is created.
 The results will be available for download after they have been saved. 
 The download button will be displayed below the Delete Run section after the results have been saved. 
+This will download all the inputs and results for each saved run.
 The run can be deleted by using the delete button at the bottom of the left side panel. 
 
 Results include values for how much of each generation type is needed (megawatts), costs (total, generation and carbon in millions of dollars), and generation information are displayed below (excess, renewable, gas, emergency and carbon emissions). 
