@@ -1,4 +1,4 @@
-FROM python:3.7
+FROM python:3.10
 WORKDIR /electric_generation_planning
 COPY requirements.txt requirements.txt
 COPY ./src ./src
