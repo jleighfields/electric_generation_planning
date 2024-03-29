@@ -51,7 +51,7 @@ with st.sidebar:
     gas_mw = st.slider('Gas MW', 0, 1000, (0, 750), 50)
     restrict_gas = st.slider('Restrict gas generation (% of load)', 0.0, 50.0, 25.0, 0.5)
     # hard code some parameters to simplify input
-    min_charge_level = 0.1  # min charge levey of batteries
+    min_charge_level = 0.1  # min charge level of batteries
     init_ch_level = 0.5  # initial battery charge level
     batt_hours = 4  # battery duration in hours
     batt_eff = 0.85  # battery efficiency

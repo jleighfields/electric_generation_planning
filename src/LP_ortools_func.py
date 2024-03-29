@@ -173,8 +173,8 @@ def run_lp(run_name, inputs):
         # set SOC[h] equal to previous hour SOC
         # plus the change from charging or discharging
         if h == 0:
-            solver.Add(SOC[h] <= init_ch_level * 4 * batt + batt_ch[h] - batt_disch[h] / batt_eff)
-            solver.Add(SOC[h] >= init_ch_level * 4 * batt + batt_ch[h] - batt_disch[h] / batt_eff)
+            solver.Add(SOC[h] <= init_ch_level * batt_hours * batt + batt_ch[h] - batt_disch[h] / batt_eff)
+            solver.Add(SOC[h] >= init_ch_level * batt_hours * batt + batt_ch[h] - batt_disch[h] / batt_eff)
         else:
             solver.Add(SOC[h] <= SOC[h - 1] + batt_ch[h] - batt_disch[h] / batt_eff)
             solver.Add(SOC[h] >= SOC[h - 1] + batt_ch[h] - batt_disch[h] / batt_eff)
@@ -277,7 +277,7 @@ def run_lp(run_name, inputs):
     for h in df.index:
         # disincentivize charging and discharging at the same time
         # this removes hours that both charge and discharge
-        objective.SetCoefficient(batt_disch[h], 0.0000002)
+        # objective.SetCoefficient(batt_disch[h], 0.0000001)
 
         # benefit to keeping the batteries charged
         objective.SetCoefficient(SOC[h], -0.0000001)
