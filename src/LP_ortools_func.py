@@ -277,7 +277,7 @@ def run_lp(run_name, inputs):
     for h in df.index:
         # disincentivize charging and discharging at the same time
         # this removes hours that both charge and discharge
-        # objective.SetCoefficient(batt_disch[h], 0.0000001)
+        objective.SetCoefficient(batt_disch[h], 0.0000001)
 
         # benefit to keeping the batteries charged
         objective.SetCoefficient(SOC[h], -0.0000001)
