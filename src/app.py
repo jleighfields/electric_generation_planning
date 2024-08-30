@@ -10,7 +10,7 @@ import seaborn as sns
 import db
 import os
 
-from LP_ortools_func import run_lp
+from LP import run_lp
 import utils
 
 
@@ -78,7 +78,6 @@ with st.sidebar:
                                          datetime.date(2030, 12, 31))
     re_outage_days = st.slider('Length renewable energy outage in days', 0, 21, 3, 1)
 
-
     run_button = st.button('create run')
 
     if 'results' in st.session_state:
@@ -111,7 +110,6 @@ with st.sidebar:
         # rerun to update selectbox
         st.rerun()
 
-
     if delete_all_button:
         print(f'deleting all runs')
         st.session_state.db.clear_db()
@@ -120,7 +118,6 @@ with st.sidebar:
             os.remove('results.zip')
         # rerun to update selectbox
         st.rerun()
-
 
     if os.path.exists('results.zip') and (st.session_state.num_runs > 0):
         st.session_state.db.zip_results()
@@ -132,7 +129,6 @@ with st.sidebar:
                 data=fp,
                 file_name='planning_results.zip',
                 mime='application/zip')
-
 
 
 #################################################
@@ -249,27 +245,33 @@ if run_button:
 st.write('''
 # Electricity generation planning model
 ## Introduction
-This tool models the cost and carbon emissions for scenarios that optimize the amount of electricity generation resource (wind, solar, batteries, and gas) to serve the electricity use (load). 
+This tool models the cost and carbon emissions for scenarios that optimize the amount of electricity generation resource
+ (wind, solar, batteries, and gas) to serve the electricity use (load). 
 The loads are based on the forecasted requirements of four northern Colorado communities. 
 The calculations are based on simplified modeling sourced from detailed utility resource software tools. 
-Users can vary the available capacity and costs by generation type, optimize for either cost or carbon emissions and visualize stress tests of limited renewable resource availability. 
+Users can vary the available capacity and costs by generation type, optimize for either cost or carbon emissions and 
+visualize stress tests of limited renewable resource availability. 
 
 ## Instructions
 The user can adjust input parameters in the left side panel. 
-Adjustments can be made to the allowable range of capacity that can be installed, the cost of each resource type, limits on gas capacity and lifecycle carbon value. 
+Adjustments can be made to the allowable range of capacity that can be installed, the cost of each resource type, 
+limits on gas capacity and lifecycle carbon value. 
 Default values represent reasonable starting points. 
 
 Once the inputs are set, clicking the **create run** button will start the optimization. 
 It will take approximately a minute to return results. 
 There will be a running icon in the upper right hand corner to let you know the optimization is running. 
 
-Results are displayed in the main panel. The **save run** button will be displayed in the left side panel after a run is created.
+Results are displayed in the main panel. The **save run** button will be displayed in the left side panel after a run 
+is created.
 The results will be available for download after they have been saved. 
 The download button will be displayed below the Delete Run section after the results have been saved. 
 This will download all the inputs and results for each saved run.
 The run can be deleted by using the delete button at the bottom of the left side panel. 
 
-Results include values for how much of each generation type is needed (megawatts), costs (total, generation and carbon in millions of dollars), and generation information are displayed below (excess, renewable, gas, emergency and carbon emissions). 
+Results include values for how much of each generation type is needed (megawatts), costs (total, generation and carbon 
+in millions of dollars), and generation information are displayed below (excess, renewable, gas, emergency and carbon 
+emissions). 
 A plot showing the hourly results for up to 21 days will be displayed below the run metrics. 
 Below the plot the input parameters are shown so the inputs can be verified.
 ''')
@@ -284,7 +286,6 @@ if 'results' in st.session_state:
     r1col3.metric("Battery MW", int(cap_mw['batt_mw']))
     r1col4.metric("Gas MW", int(cap_mw['gas_mw']))
 
-
     st.write('---')
     st.write('### Cost metrics')
     # st.write(f"Objective value: {int(st.session_state.results['obj_val'])}")
@@ -298,34 +299,36 @@ if 'results' in st.session_state:
     st.write('### Generation metrics')
     r3col1, r3col2, r3col3, r3col4, r3col5 = st.columns(5)
     r3col1.metric("% excess gen", int(metrics['excess_gen_percent']))
-    r3col2.metric("% RE gen", np.round(metrics['re_percent'],1))
-    r3col3.metric("% Gas gen", np.round(metrics['gas_percent'],1))
+    r3col2.metric("% RE gen", np.round(metrics['re_percent'], 1))
+    r3col3.metric("% Gas gen", np.round(metrics['gas_percent'], 1))
     r3col4.metric("Tons CO2 (thou)", int(metrics['total_co2_thou_tons']))
     r3col5.metric("Emergency MWh", int(metrics['total_outside_energy']))
 
     st.write('---')
     st.write('### Hourly load and generation plot')
-    start_date = st.date_input('Plot start date',
-                                             datetime.date(2030, 7, 1),
-                                             datetime.date(2030, 1, 1),
-                                             datetime.date(2030, 12, 31))
+    start_date = st.date_input(
+        'Plot start date',
+        datetime.date(2030, 7, 1),
+        datetime.date(2030, 1, 1),
+        datetime.date(2030, 12, 31)
+    )
     num_days = st.slider('Number of days to plot', 1, 28, 14, 1)
 
-    try:
-        plot_range_start_default = start_date.strftime("%Y-%m-%d %H:%M:%S")
-        plot_range_end_default = (
-                start_date + pd.Timedelta(f'{num_days}d')
-        ).strftime("%Y-%m-%d %H:%M:%S")
-        fig = utils.get_resource_stack_plot(
-            st.session_state.results['final_df'],
-            plot_range_start_default,
-            plot_range_end_default
-        )
-        # utils.plot_hourly(st.session_state.results['final_df'], start_date, num_days)
-        # st.pyplot(fig=plt)
-        st.plotly_chart(fig)
-    except:
-        print('plot except')
+    # create default plot ranges from user inputs
+    plot_range_start_default = start_date.strftime("%Y-%m-%d %H:%M:%S")
+    plot_range_end_default = (
+            start_date + pd.Timedelta(f'{num_days}d')
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    fig = utils.get_resource_stack_plot(
+        st.session_state.results['final_df'],
+        plot_range_start_default,
+        plot_range_end_default
+    )
+    st.plotly_chart(fig)
+
+    # utils.plot_hourly(st.session_state.results['final_df'], start_date, num_days)
+    # st.pyplot(fig=plt)
 
     st.write('---')
     st.write('### Inputs')

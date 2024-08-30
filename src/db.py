@@ -154,7 +154,7 @@ if __name__ == '__main__':
 
     # if not os.path.isfile('results.joblib'):
 
-    # run LP_ortools_func.py to get joblib files
+    # run LP.py to get joblib files
     results = load('results.joblib')
     results2 = load('results2.joblib')
 
