@@ -3,18 +3,20 @@
 
 import streamlit as st
 import datetime
-from LP_ortools_func import run_lp
+
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import matplotlib.pyplot as plt
 import db
 import os
+
+from LP_ortools_func import run_lp
+import utils
 
 
 sns.set_style("white")
 sns.set_palette("colorblind")
-
+st.set_page_config(layout="wide")
 
 ########################################################
 # flush output to console during rerun for docker
@@ -90,7 +92,7 @@ with st.sidebar:
             st.session_state.db.add_run(st.session_state.results)
             st.session_state.db.zip_results()
             # rerun to update selectbox
-            st.experimental_rerun()
+            st.rerun()
 
     st.write('---')
     st.write('### Delete run')
@@ -107,7 +109,8 @@ with st.sidebar:
         if len(st.session_state.db.get_runs()) > 0:
             st.session_state.db.zip_results()
         # rerun to update selectbox
-        st.experimental_rerun()
+        st.rerun()
+
 
     if delete_all_button:
         print(f'deleting all runs')
@@ -116,8 +119,7 @@ with st.sidebar:
         if os.path.exists('results.zip'):
             os.remove('results.zip')
         # rerun to update selectbox
-        st.experimental_rerun()
-
+        st.rerun()
 
 
     if os.path.exists('results.zip') and (st.session_state.num_runs > 0):
@@ -230,44 +232,13 @@ if run_button:
     st.session_state.inputs = inputs
     st.session_state.run_name = run_name
 
-    st.session_state.results = run_lp(run_name=st.session_state.run_name,  inputs=st.session_state.inputs)
+    st.session_state.results = run_lp(
+        run_name=st.session_state.run_name,  
+        inputs_from_usr=st.session_state.inputs
+        )
 
     # rerun to show save button
-    st.experimental_rerun()
-
-
-########################################################
-# function to plot hourly data
-########################################################
-
-def plot_hourly(final_df, start_date, num_days):
-
-    cols = ['hydro', 'solar', 'wind', 'batt_discharge', 'gas', 'outside_energy']
-
-    # get valid columns
-    cols = [c for c in cols if c in final_df.columns]
-
-    if (start_date is not None) and (np.any(final_df.index == pd.to_datetime(start_date))):
-        t0 = np.where(final_df.index == pd.to_datetime(start_date))[0][0]
-    else:
-        # randomly sample day
-        t0 = int(np.random.randint(0, len(final_df.index) - 24 * num_days, size=1))
-
-    start_time = final_df.index[t0]
-    end_time = final_df.index[t0 + 24 * num_days]
-
-    # find the max y value for placing the legend
-    ymax = final_df.loc[start_time:end_time, cols].sum(axis=1).max()
-
-    # col pallete
-    pal = ["steelblue", "gold", "mediumseagreen", "darkorchid", "coral", 'crimson']
-
-    ax = final_df.loc[start_time:end_time, ['2030_load']].plot.line(color='black');
-    final_df.loc[start_time:end_time, ['load_and_charge']].plot.line(ax=ax, color='black', linestyle='--');
-    final_df.loc[start_time:end_time, cols].plot.area(ax=ax, linewidth=0, figsize=(12, 6), color=pal);
-
-    ax.set_ylim(0, ymax + 250)
-    plt.ylabel('MW')
+    st.rerun()
 
 
 ########################################################
@@ -338,11 +309,21 @@ if 'results' in st.session_state:
                                              datetime.date(2030, 7, 1),
                                              datetime.date(2030, 1, 1),
                                              datetime.date(2030, 12, 31))
-    num_days = st.slider('Number of days to plot', 1, 21, 7, 1)
+    num_days = st.slider('Number of days to plot', 1, 28, 14, 1)
 
     try:
-        plot_hourly(st.session_state.results['final_df'], start_date, num_days)
-        st.pyplot(fig=plt)
+        plot_range_start_default = start_date.strftime("%Y-%m-%d %H:%M:%S")
+        plot_range_end_default = (
+                start_date + pd.Timedelta(f'{num_days}d')
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        fig = utils.get_resource_stack_plot(
+            st.session_state.results['final_df'],
+            plot_range_start_default,
+            plot_range_end_default
+        )
+        # utils.plot_hourly(st.session_state.results['final_df'], start_date, num_days)
+        # st.pyplot(fig=plt)
+        st.plotly_chart(fig)
     except:
         print('plot except')
 

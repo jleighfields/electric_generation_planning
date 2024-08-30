@@ -1,7 +1,131 @@
 # Author: Justin Fields
 # Date: 2021-12-03
 
-def run_lp(run_name, inputs):
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import time
+from pprint import pprint
+# import ortools
+from ortools.linear_solver import pywraplp
+import sys
+
+import datetime
+from joblib import dump, load
+
+# set up logging
+import logging
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+
+
+def get_base_inputs() -> dict:
+        inputs = {}
+
+        # restrictions from UI
+        inputs['peak_load'] = 1000
+        inputs['min_obj'] = 'minimize cost'
+        inputs['max_batt_mw'] = 3000
+        inputs['min_batt_mw'] = 0
+        inputs['max_gas_mw'] = 1000
+        inputs['min_gas_mw'] = 0
+        inputs['max_wind_mw'] = 2000
+        inputs['min_wind_mw'] = 0
+        inputs['max_solar_mw'] = 3000
+        inputs['min_solar_mw'] = 0
+        inputs['re_outage_start'] = datetime.date(2030, 7, 3)
+        inputs['re_outage_days'] = 3
+
+        # restrict gas to a portion of total load, 0-1 or None
+        # e.g. 0.05 -> 5% limit on gas generation
+        # and  1.0 -> no limit on gas generation
+        inputs['restrict_gas'] = 20
+
+        # outside engery used for solving
+        inputs['use_outside_energy'] = True
+        inputs['outside_energy_cost'] = 10000
+
+        # battery parameters
+        inputs['min_charge_level'] = 0.1
+        inputs['init_ch_level'] = 0.5
+        inputs['batt_hours'] = 4
+        inputs['batt_eff'] = 0.85
+
+        # cost of CO2
+        # C02 values from CSU study
+        gas_co2_ton_per_mwh = (411 + 854) / 2000
+        # assumed 20 year life
+        gas_co2_ton_per_mw = (5981 + 1000 + 35566 + 8210 + 10165 + 1425) / (6 * 18) / 20
+
+        wind_co2_ton_per_mwh = 0.2 / 2000
+        # assumed 20 year life
+        wind_co2_ton_per_mw = (754 + 10 - 241) / 20
+
+        solar_co2_ton_per_mwh = 2.1 / 2000
+        # assumed 20 year life
+        solar_co2_ton_per_mw = (1202 + 250 - 46) / 20
+
+        # battery C02 given in lbs
+        # assumed 15 year life
+        batt_co2_ton_per_mw = (1940400 - 83481 + 4903) / 2000 / 15
+
+        # Carbon 2030 $/ton = $9.06
+        # co2_cost = 9.06
+        co2_cost = 160
+
+
+        # calculate variable costs in $/MWh and $/MW
+        # calculate fixed costs in $/MW
+        # these costs include the cost of carbon
+        cc_gas_mwh = co2_cost * gas_co2_ton_per_mwh
+        cc_gas_mw = co2_cost * gas_co2_ton_per_mw
+
+        cc_wind_mwh = co2_cost * wind_co2_ton_per_mwh
+        cc_wind_mw = co2_cost * wind_co2_ton_per_mw
+
+        cc_solar_mwh = co2_cost * solar_co2_ton_per_mwh
+        cc_solar_mw = co2_cost * solar_co2_ton_per_mw
+
+        cc_batt_mw = co2_cost * batt_co2_ton_per_mw
+
+        # save cost of carbon calcs for
+        # fixed and variable charges
+        inputs['co2_cost'] = co2_cost
+        inputs['gas_co2_ton_per_mwh'] = gas_co2_ton_per_mwh
+        inputs['gas_co2_ton_per_mw'] = gas_co2_ton_per_mw
+        inputs['wind_co2_ton_per_mwh'] = wind_co2_ton_per_mwh
+        inputs['wind_co2_ton_per_mw'] = wind_co2_ton_per_mw
+        inputs['solar_co2_ton_per_mwh'] = solar_co2_ton_per_mwh
+        inputs['solar_co2_ton_per_mw'] = solar_co2_ton_per_mw
+        inputs['batt_co2_ton_per_mw'] = batt_co2_ton_per_mw
+
+        # capacity cost in $/kw-mo
+        gas_cap_cost = 11.27
+        inputs['gas_mw_cost'] = cc_gas_mw + gas_cap_cost * 12 * 1000  # converted to $/MW-yr
+
+        heat_rate = 8883  # btu/kwh
+        vom = 7.16  # $/mwh
+        gas_fuel_cost = 4.37  # $/mmbtu
+        inputs['gas_mwh_cost'] = cc_gas_mwh + gas_fuel_cost * heat_rate / 1000 + vom
+
+        batt_cost = 8.25
+        inputs['batt_mw_cost']  = cc_batt_mw + batt_cost * 12 * 1000  # converted to $/MW-yr
+
+        wind_kw_mo = 1.13
+        inputs['wind_mw_cost'] = cc_wind_mw + wind_kw_mo * 12 * 1000  # converted to $/MW-yr
+        inputs['wind_mwh_cost'] = cc_wind_mwh + 41.01  # $/mwh
+
+        solar_kw_mo = 1.13
+        inputs['solar_mw_cost'] = cc_solar_mw + solar_kw_mo * 12 * 1000  # converted to $/MW-yr
+        inputs['solar_mwh_cost'] = cc_solar_mwh + 33.51  # $/mwh
+
+        return inputs
+
+
+def run_lp(
+        run_name: str, 
+        inputs_from_usr: dict={},
+        ) -> dict:
     """Run a linear program that minimizes costs with the constraints:
         1. load must be served
         2. battery state of charge limits
@@ -46,18 +170,19 @@ def run_lp(run_name, inputs):
     batt_co2_ton_per_mw -- emissions associated with construction, O&M, decommission
     """
 
-    import pandas as pd
-    import numpy as np
-    import seaborn as sns
-    import time
-    # import ortools
-    from ortools.linear_solver import pywraplp
-    import sys
-
     ########################################################
     # set inputs for optimization
     ########################################################
 
+    # get base inputs - includes all expected values for LP
+    inputs = get_base_inputs()
+    # update base inputs with usr inputs
+    inputs.update(inputs_from_usr)
+    log.info(f'inputs:')
+    pprint(inputs)
+    sys.stdout.flush()
+
+    # unpack inputs
     peak_load = inputs['peak_load']
     min_obj = inputs['min_obj']
     max_batt_mw = inputs['max_batt_mw']
@@ -93,9 +218,6 @@ def run_lp(run_name, inputs):
     solar_co2_ton_per_mw = inputs['solar_co2_ton_per_mw']
     batt_co2_ton_per_mw = inputs['batt_co2_ton_per_mw']
 
-    # boolean for debug printing
-    debug_print = False
-
     # restrict gas to a portion of total load, 0-1 or None
     # e.g. 0.05 -> 5% limit on gas generation
     # and  1.0 -> no limit on gas generation
@@ -106,14 +228,16 @@ def run_lp(run_name, inputs):
     df = pd.read_csv('src/profiles.csv', index_col='Hour')
     df = df[df.index < 8760]
     df['2030_load'] = df.load * peak_load
+    # update time to 2030
+    df['mst'] = pd.date_range('2030-01-01', periods=8760, freq="h")
 
     # get RE outage times index
-    outage_hours = pd.date_range(re_outage_start, periods=24 * re_outage_days, freq="H")
-    idx = np.isin(pd.date_range('2030-01-01', periods=8760, freq="H"), outage_hours, assume_unique=True)
+    outage_hours = pd.date_range(re_outage_start, periods=24 * re_outage_days, freq="h")
+    outage_idx = df['mst'].isin(outage_hours)
 
     # apply RE outages
-    df.loc[idx, ['solar', 'wind']] = 0
-    df.loc[idx, ['solar', 'wind']]
+    df.loc[outage_idx, ['solar', 'wind']] = 0
+    log.info(df.loc[outage_idx, ['mst', 'solar', 'wind']])
 
     ########################################################
     # Build optimization model
@@ -132,11 +256,11 @@ def run_lp(run_name, inputs):
     wind = solver.NumVar(min_wind_mw, max_wind_mw, 'wind')
     gas = solver.NumVar(min_gas_mw, max_gas_mw, 'gas')
 
-    print('Adding variables for build capacity')
-    print('Number of variables =', solver.NumVariables(), '\n')
+    log.info('Adding variables for build capacity')
+    log.info(f'Number of variables = {solver.NumVariables()}')
 
     # generation decision variables
-    print('Adding hourly variables and constraints')
+    log.info('Adding hourly variables and constraints')
     t0 = time.time()
 
     # create arrays to hold hourly varaibles
@@ -150,13 +274,8 @@ def run_lp(run_name, inputs):
     if use_outside_energy:
         outside_energy = [None] * len(df.index)
 
-    t_h = time.time()  # for tracking time in hourly loop
+
     for h in df.index:
-
-        if h % 100 == 0 and debug_print:
-            print("h: ", h, "\tET: ", round(time.time() - t_h, 2))
-            t_h = time.time()
-
         # add hourly decision variables
         batt_ch[h] = solver.NumVar(0, solver.infinity(), 'batt_ch[{}]'.format(h))
         batt_disch[h] = solver.NumVar(0, solver.infinity(), 'batt_disch[{}]'.format(h))
@@ -231,9 +350,9 @@ def run_lp(run_name, inputs):
 
     t1 = time.time()
 
-    print('time to build model (seconds): {0:,.2f}\n'.format((t1 - t0), 1))
-    print('Number of variables: {0:,}'.format(solver.NumVariables()))
-    print('Number of contraints: {0:,}'.format(solver.NumConstraints()))
+    log.info('time to build model (seconds): {0:,.2f}\n'.format((t1 - t0), 1))
+    log.info('Number of variables: {0:,}'.format(solver.NumVariables()))
+    log.info('Number of contraints: {0:,}'.format(solver.NumConstraints()))
     print('\n', flush=True)
 
     ########################################################
@@ -289,20 +408,20 @@ def run_lp(run_name, inputs):
     # solve the system
     ########################################################
 
-    print('Starting optimization...')
+    log.info('Starting optimization...')
     t0 = time.time()
     status = solver.Solve()
     t1 = time.time()
 
-    print('time to solve (minutes): {0:,.2f}\n'.format((t1 - t0) / 60, 1))
+    log.info('time to solve (minutes): {0:,.2f}\n'.format((t1 - t0) / 60, 1))
 
-    print('Solution is optimal: ', status == solver.OPTIMAL, '\n')
+    log.info(f'Solution is optimal: {status == solver.OPTIMAL}')
 
     obj_val = objective.Value()
-    print('Solution:')
-    print('Objective value = {0:,.0f}\n'.format(obj_val))
+    log.info('Solution:')
+    log.info('Objective value = {0:,.0f}\n'.format(obj_val))
 
-    print('Build variables:')
+    log.info('Build variables:')
     batt_mw = batt.solution_value()
     solar_mw = solar.solution_value()
     wind_mw = wind.solution_value()
@@ -314,7 +433,7 @@ def run_lp(run_name, inputs):
 
     # print results for build variables
     for r in [batt, solar, wind, gas]:
-        print('{0} \t= {1:,.0f}'.format(r, r.solution_value()) + '\n')
+        log.info('{0} \t= {1:,.0f}'.format(r, r.solution_value()) + '\n')
 
     print('\n')
 
@@ -323,7 +442,7 @@ def run_lp(run_name, inputs):
     ########################################################
 
     # create a new data frame to hold the final solution values
-    print('Gathering hourly data...\n')
+    log.info('Gathering hourly data...\n')
     final_df = df[['Date', '2030_load', 'solar', 'wind']].copy()
     final_df['solar'] = final_df['solar'] * solar.solution_value()
     final_df['wind'] = final_df['wind'] * wind.solution_value()
@@ -386,18 +505,18 @@ def run_lp(run_name, inputs):
     )
 
     # summarize the data
-    # print('Summary of hourly data:\n')
-    # print(final_df.describe().T)
+    # log.info('Summary of hourly data:\n')
+    # log.info(final_df.describe().T)
     # print('\n')
 
     # this should be empty...
-    # print('Any negative net load? Should be empty...')
-    # print(final_df[(final_df.net_load < 0)].T)
+    # log.info('Any negative net load? Should be empty...')
+    # log.info(final_df[(final_df.net_load < 0)].T)
     # print('\n')
 
     # this should be empty...
-    # print('Any hours with both charging and discharging? Should be empty...')
-    # print(final_df[(final_df.batt_discharge > 0) & (final_df.batt_charge > 0)].T)
+    # log.info('Any hours with both charging and discharging? Should be empty...')
+    # log.info(final_df[(final_df.batt_discharge > 0) & (final_df.batt_charge > 0)].T)
     # print('\n')
 
     ########################################################
@@ -408,37 +527,37 @@ def run_lp(run_name, inputs):
 
     if use_outside_energy:
         outside_energy_percent = 100 * final_df.outside_energy.sum() / final_df['2030_load'].sum()
-        print('Outside energy as a percentage of load: {0:,.3f}%\n'.format(outside_energy_percent))
+        log.info('Outside energy as a percentage of load: {0:,.3f}%\n'.format(outside_energy_percent))
 
         total_outside_energy = 100 * final_df.outside_energy.sum()
-        print('Total outside energy: {0:,.2f} MWh\n'.format(total_outside_energy))
+        log.info('Total outside energy: {0:,.2f} MWh\n'.format(total_outside_energy))
 
         metrics['outside_energy_percent'] = outside_energy_percent
         metrics['total_outside_energy'] = total_outside_energy
     else:
         outside_energy_percent = 0
-        print('Outside energy as a percentage of load: {0:,.3f}%\n'.format(outside_energy_percent))
+        log.info('Outside energy as a percentage of load: {0:,.3f}%\n'.format(outside_energy_percent))
 
         total_outside_energy = 0
-        print('Total outside energy: {0:,.2f} MWh\n'.format(total_outside_energy))
+        log.info('Total outside energy: {0:,.2f} MWh\n'.format(total_outside_energy))
 
         metrics['outside_energy_percent'] = outside_energy_percent
         metrics['total_outside_energy'] = total_outside_energy
 
     gas_percent = 100 * final_df.gas.sum() / final_df['2030_load'].sum()
-    print('Gas generation as a percentage of load: {0:,.2f}%\n'.format(gas_percent))
+    log.info('Gas generation as a percentage of load: {0:,.2f}%\n'.format(gas_percent))
     metrics['gas_percent'] = gas_percent
 
     re_percent = 100 * ((final_df.solar.sum() + final_df.wind.sum()) / final_df['2030_load'].sum())
-    print('RE generation as a percentage of load: {0:,.2f}%\n'.format(re_percent))
+    log.info('RE generation as a percentage of load: {0:,.2f}%\n'.format(re_percent))
     metrics['re_percent'] = re_percent
 
     excess_gen_percent = 100 * (final_df.net_load.sum() / final_df['2030_load'].sum())
-    print('Excess generation as a percentage of load: {0:,.2f}%\n'.format(excess_gen_percent))
+    log.info('Excess generation as a percentage of load: {0:,.2f}%\n'.format(excess_gen_percent))
     metrics['excess_gen_percent'] = excess_gen_percent
 
     batt_efficiency = 100 * final_df.batt_discharge.sum() / final_df.batt_charge.sum()
-    print('Batt discharge as a percentage of batt charge: {0:,.2f}%\n'.format(batt_efficiency))
+    log.info('Batt discharge as a percentage of batt charge: {0:,.2f}%\n'.format(batt_efficiency))
     metrics['batt_efficiency'] = batt_efficiency
 
     # calculate total co2 generation
@@ -468,7 +587,7 @@ def run_lp(run_name, inputs):
     metrics['total_gen_cost_mill'] = metrics['total_cost_mill'] - metrics['total_co2_cost_mill']
 
     total_time_1 = time.time()
-    print('total time to build, solve, and verify (minutes): {0:,.2f}\n'.format((total_time_1 - total_time_0) / 60))
+    log.info('total time to build, solve, and verify (minutes): {0:,.2f}\n'.format((total_time_1 - total_time_0) / 60))
     print('\n', flush=True)
     
     # return dictionary for displaying results
@@ -483,125 +602,11 @@ def run_lp(run_name, inputs):
 # for testing
 if __name__ == '__main__':
     print('\n')
+        
+    results = run_lp(run_name='test')
+    log.info(results)
 
-    import datetime
-    from joblib import dump, load
-
-    # set up inputs for optimization
-
-    # select year for profiles
-    profile_year = 'mix'
-
-    use_outside_energy = True
-    outside_energy_cost = 10000
-
-    # restrict gas to a portion of total load, 0-1 or None
-    # e.g. 0.05 -> 5% limit on gas generation
-    # and  1.0 -> no limit on gas generation
-    restrict_gas = 20
-
-    # battery parameters
-    min_charge_level = 0.1
-    init_ch_level = 0.5
-    batt_hours = 4
-    batt_eff = 0.85
-
-    # cost of CO2
-    # C02 values from CSU study
-    gas_co2_ton_per_mwh = (411 + 854) / 2000
-    # assumed 20 year life
-    gas_co2_ton_per_mw = (5981 + 1000 + 35566 + 8210 + 10165 + 1425) / (6 * 18) / 20
-
-    wind_co2_ton_per_mwh = 0.2 / 2000
-    # assumed 20 year life
-    wind_co2_ton_per_mw = (754 + 10 - 241) / 20
-
-    solar_co2_ton_per_mwh = 2.1 / 2000
-    # assumed 20 year life
-    solar_co2_ton_per_mw = (1202 + 250 - 46) / 20
-
-    # battery C02 given in lbs
-    # assumed 15 year life
-    batt_co2_ton_per_mw = (1940400 - 83481 + 4903) / 2000 / 15
-
-    # Carbon 2030 $/ton = $9.06
-    # co2_cost = 9.06
-    co2_cost = 160
-
-    # calculate costs in $/MWh and $/MW
-    # these costs include the cost of carbon
-
-    cc_gas_mwh = co2_cost * gas_co2_ton_per_mwh
-    cc_gas_mw = co2_cost * gas_co2_ton_per_mw
-
-    cc_wind_mwh = co2_cost * wind_co2_ton_per_mwh
-    cc_wind_mw = co2_cost * wind_co2_ton_per_mw
-
-    cc_solar_mwh = co2_cost * solar_co2_ton_per_mwh
-    cc_solar_mw = co2_cost * solar_co2_ton_per_mw
-
-    cc_batt_mw = co2_cost * batt_co2_ton_per_mw
-
-    # capacity cost in $/kw-mo
-    gas_cap_cost = 11.27
-    gas_fixed_cost = cc_gas_mw + gas_cap_cost * 12 * 1000  # converted to $/MW-yr
-
-    heat_rate = 8883  # btu/kwh
-    vom = 7.16  # $/mwh
-    gas_fuel_cost = 4.37  # $/mmbtu
-    gas_variable_cost = cc_gas_mwh + gas_fuel_cost * heat_rate / 1000 + vom
-
-    batt_cost = 8.25
-    batt_fixed_cost = cc_batt_mw + batt_cost * 12 * 1000  # converted to $/MW-yr
-
-    wind_kw_mo = 1.13
-    wind_fixed_cost = cc_wind_mw + wind_kw_mo * 12 * 1000  # converted to $/MW-yr
-    wind_variable_cost = cc_wind_mwh + 41.01  # $/mwh
-
-    solar_kw_mo = 1.13
-    solar_fixed_cost = cc_solar_mw + solar_kw_mo * 12 * 1000  # converted to $/MW-yr
-    solar_variable_cost = cc_solar_mwh + 33.51  # $/mwh
-
-    inputs = {}
-    inputs['peak_load'] = 1000
-    inputs['min_obj'] = 'minimize cost'
-    inputs['max_batt_mw'] = 3000
-    inputs['min_batt_mw'] = 0
-    inputs['max_gas_mw'] = 1000
-    inputs['min_gas_mw'] = 0
-    inputs['max_wind_mw'] = 2000
-    inputs['min_wind_mw'] = 0
-    inputs['max_solar_mw'] = 3000
-    inputs['min_solar_mw'] = 0
-    inputs['restrict_gas'] = 20
-    inputs['min_charge_level'] = min_charge_level
-    inputs['init_ch_level'] = init_ch_level
-    inputs['batt_hours'] = batt_hours
-    inputs['batt_eff'] = batt_eff
-    inputs['use_outside_energy'] = use_outside_energy
-    inputs['outside_energy_cost'] = outside_energy_cost
-    inputs['gas_mw_cost'] = gas_fixed_cost
-    inputs['gas_mwh_cost'] = gas_variable_cost
-    inputs['batt_mw_cost'] = batt_fixed_cost
-    inputs['wind_mw_cost'] = wind_fixed_cost
-    inputs['wind_mwh_cost'] = wind_variable_cost
-    inputs['solar_mw_cost'] = solar_fixed_cost
-    inputs['solar_mwh_cost'] = solar_variable_cost
-    inputs['re_outage_start'] = datetime.date(2030, 7, 3)
-    inputs['re_outage_days'] = 3
-    inputs['co2_cost'] = co2_cost
-    inputs['gas_co2_ton_per_mwh'] = gas_co2_ton_per_mwh
-    inputs['gas_co2_ton_per_mw'] = gas_co2_ton_per_mw
-    inputs['wind_co2_ton_per_mwh'] = wind_co2_ton_per_mwh
-    inputs['wind_co2_ton_per_mw'] = wind_co2_ton_per_mw
-    inputs['solar_co2_ton_per_mwh'] = solar_co2_ton_per_mwh
-    inputs['solar_co2_ton_per_mw'] = solar_co2_ton_per_mw
-    inputs['batt_co2_ton_per_mw'] = batt_co2_ton_per_mw
-
-    results = run_lp(run_name='test', inputs=inputs)
-    print(results)
-
-    print('saving results')
+    log.info('saving results')
     dump(results, 'results.joblib')
 
     # create 2nd run for testing db.py
@@ -609,4 +614,4 @@ if __name__ == '__main__':
     results['run_name'] = 'test2'
     dump(results, 'results2.joblib')
 
-    print('Finished')
+    log.info('Finished')
