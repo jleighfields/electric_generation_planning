@@ -1,15 +1,18 @@
-import datetime
 import sqlite3
 import pandas as pd
 import os
 import shutil
 
-class ResultsDB:
+# set up logging
+import logging
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
+
+class ResultsDB:
     def __init__(self):
         self.db = sqlite3.connect(":memory:")
         self.table_names = ['inputs', 'cap_mw', 'metrics', 'final_df']
-
 
 
     def clear_db(self):
@@ -20,14 +23,14 @@ class ResultsDB:
             tables = [t[0] for t in tables]
             for table_name in self.table_names:
                 if table_name in tables:
-                    sql_text = "DELETE from {table}".format(**{'table': table_name})
+                    sql_text = f"DELETE from {table_name}"
+                    log.info(f"sql_text: {sql_text}")
                     cur.execute(sql_text)
 
-            cur.close()
-
         except Exception as e:
-            print('Error thrown during delete_run')
-            print(e)
+            log.error('Error thrown during delete_run')
+            log.error(e)
+
         finally:
             if cur:
                 cur.close()
@@ -53,11 +56,11 @@ class ResultsDB:
 
         try:
             if results['run_name'] in self.get_runs():
-                print(f'deleting old run {results["run_name"]}')
+                log.info(f'deleting old run {results["run_name"]}')
                 self.delete_run(results["run_name"])
 
             for table_name in self.table_names:
-                print(f"adding {table_name} for run {results['run_name']}")
+                log.info(f"adding {table_name} for run {results['run_name']}")
                 if table_name != 'final_df':
                     df = pd.DataFrame(results[table_name], index=[results['run_name']])
                     df.index.names = ['run_name']
@@ -68,8 +71,8 @@ class ResultsDB:
                 df.to_sql(name=table_name, con=self.db, if_exists='append', index=True)
 
         except Exception as e:
-            print('Error thrown during add run data')
-            print(e)
+            log.error('Error thrown during add run data')
+            log.error(e)
 
 
 
@@ -77,14 +80,13 @@ class ResultsDB:
         try:
             cur = self.db.cursor()
             for table_name in self.table_names:
-                sql_text = "DELETE from {table} WHERE run_name = ?".format(**{'table': table_name})
+                sql_text = f"DELETE from {table_name} WHERE run_name = ?"
                 cur.execute(sql_text, (run,))
 
-            cur.close()
-
         except Exception as e:
-            print('Error thrown during delete_run')
-            print(e)
+            log.error('Error thrown during delete_run')
+            log.error(e)
+
         finally:
             if cur:
                 cur.close()
@@ -104,7 +106,7 @@ class ResultsDB:
 
 
     def zip_results(self):
-        print('zipping results')
+        log.info('zipping results')
         zip_loc = './csv'
         if os.path.exists(zip_loc):
             shutil.rmtree(zip_loc)
@@ -117,28 +119,28 @@ class ResultsDB:
             tables = [t[0] for t in tables]
             for table_name in self.table_names:
                 if table_name in tables:
-                    sql_text = "SELECT * from {table}".format(**{'table': table_name})
+                    sql_text = f"SELECT * from {table_name}"
                     save_path = f'{zip_loc}/{table_name}.csv'
                     df = pd.read_sql_query(sql_text, self.db)
                     df.to_csv(save_path)
-                    print(f'zipping table: {table_name}')
-                    print(f'n_rows: {df.shape[0]}')
+                    log.info(f'zipping table: {table_name}')
+                    log.info(f'n_rows: {df.shape[0]}')
 
             shutil.make_archive('results', 'zip', zip_loc)
 
         except Exception as e:
-            print('Error thrown during delete_run')
-            print(e)
+            log.error('Error thrown during zipping results')
+            log.error(e)
         finally:
             if cur:
                 cur.close()
 
     def print_head(self):
         for table_name in self.table_names:
-            sql_text = "select * from {table}".format(**{'table': table_name})
+            sql_text = f"SELECT * from {table_name}"
             temp_df = pd.read_sql_query(sql_text, self.db)
-            print(f'table: {table_name}')
-            print(temp_df.head())
+            log.info(f'table: {table_name}')
+            log.info(temp_df.head())
             print('\n')
 
 
@@ -148,37 +150,47 @@ if __name__ == '__main__':
     ##############################################
     # get results dictionary for testing
 
-    import datetime
     from joblib import load
 
-    # run LP_ortools_func.py to get joblib files
+    # if not os.path.isfile('results.joblib'):
+
+    # run LP.py to get joblib files
     results = load('results.joblib')
     results2 = load('results2.joblib')
 
-    # table_names = ['inputs', 'cap_mw', 'metrics', 'final_df']
-    # print(pd.DataFrame(results[table_names[0]], index=[results['run_name']]))
-
     print('\n################################')
-    print('ADD test run')
+    log.info('ADD test run')
     test_db = ResultsDB()
-    print(type(test_db).__name__)
+    log.info(type(test_db).__name__)
     test_db.clear_db()
     test_db.add_run(results)
     test_db.add_run(results2)
     test_db.print_head()
 
     print('\n################################')
-    print('GET runs')
-    print(f'len: {len(test_db.get_runs())}')
-    print(test_db.get_runs())
+    log.info('GET runs')
+    log.info(f'len: {len(test_db.get_runs())}')
+    log.info(test_db.get_runs())
+    assert len(test_db.get_runs()) == 2
 
     print('\n################################')
-    print('DELETE test')
+    log.info('DELETE test')
     test_db.delete_run('test')
+    log.info(test_db.get_runs())
+    assert len(test_db.get_runs()) == 1
     test_db.print_head()
 
     print('\n################################')
-    print('ZIP test')
+    log.info('ZIP test')
     test_db.zip_results()
+    assert os.path.isfile('results.zip')
+
+    print('\n################################')
+    log.info('CLEAR DB test')
+    test_db.clear_db()
+    log.info(test_db.get_runs())
+    assert len(test_db.get_runs()) == 0
+
+
 
 
