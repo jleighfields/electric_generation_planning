@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 class ResultsDB:
     def __init__(self):
-        self.db = sqlite3.connect(":memory:")
+        self.db = sqlite3.connect(":memory:", check_same_thread=False)
         self.table_names = ['inputs', 'cap_mw', 'metrics', 'final_df']
 
 
