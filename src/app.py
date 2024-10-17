@@ -73,7 +73,7 @@ with st.sidebar:
     st.write('---')
     st.write('#### Stress test parameters')
     re_outage_start_date = st.date_input('Renewable energy outage start date',
-                                         datetime.date(2030, 7, 3),
+                                         datetime.date(2030, 7, 10),
                                          datetime.date(2030, 1, 1),
                                          datetime.date(2030, 12, 31))
     re_outage_days = st.slider('Length renewable energy outage in days', 0, 21, 3, 1)
@@ -308,7 +308,7 @@ if 'results' in st.session_state:
     st.write('### Hourly load and generation plot')
     start_date = st.date_input(
         'Plot start date',
-        datetime.date(2030, 7, 1),
+        datetime.date(2030, 7, 7),
         datetime.date(2030, 1, 1),
         datetime.date(2030, 12, 31)
     )
