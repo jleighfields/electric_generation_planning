@@ -1,15 +1,12 @@
 # linux
-conda create -n "py_3_11" python=3.11
-conda activate py_3_11
+conda create -n gen_planning python=3.11
+conda activate gen_planning
 python3 -m pip install --upgrade pip
 python3 -m venv venv
 . venv/bin/activate
-pip install streamlit pandas ortools seaborn matplotlib sqlalchemy jupyter joblib plotly
+pip install streamlit pandas ortools seaborn matplotlib sqlalchemy jupyter joblib
 pip freeze > requirements.txt
 pip install -r ./requirements.txt
-
-jupyter kernelspec uninstall elec_planning -y
-ipython kernel install --name=elec_planning --user
 
 # Windows
 pip install virtualenv
