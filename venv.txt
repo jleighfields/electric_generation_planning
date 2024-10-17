@@ -1,4 +1,6 @@
 # linux
+conda create -n gen_planning python=3.11
+conda activate gen_planning
 python3 -m pip install --upgrade pip
 python3 -m venv venv
 . venv/bin/activate
