@@ -3,18 +3,20 @@
 
 import streamlit as st
 import datetime
-from LP_ortools_func import run_lp
+
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import matplotlib.pyplot as plt
 import db
 import os
+
+from LP import run_lp
+import utils
 
 
 sns.set_style("white")
 sns.set_palette("colorblind")
-
+st.set_page_config(layout="wide")
 
 ########################################################
 # flush output to console during rerun for docker
@@ -26,7 +28,9 @@ print('', flush=True)
 # set up db
 ########################################################
 
-db = db.ResultsDB()
+if not ('db' in st.session_state):
+    print('creating database')
+    st.session_state.db = db.ResultsDB()
 
 ########################################################
 # set up inputs sidebar
@@ -49,7 +53,7 @@ with st.sidebar:
     gas_mw = st.slider('Gas MW', 0, 1000, (0, 750), 50)
     restrict_gas = st.slider('Restrict gas generation (% of load)', 0.0, 50.0, 25.0, 0.5)
     # hard code some parameters to simplify input
-    min_charge_level = 0.1  # min charge levey of batteries
+    min_charge_level = 0.1  # min charge level of batteries
     init_ch_level = 0.5  # initial battery charge level
     batt_hours = 4  # battery duration in hours
     batt_eff = 0.85  # battery efficiency
@@ -74,39 +78,49 @@ with st.sidebar:
                                          datetime.date(2030, 12, 31))
     re_outage_days = st.slider('Length renewable energy outage in days', 0, 21, 3, 1)
 
-
     run_button = st.button('create run')
 
+    if 'results' in st.session_state:
+        st.write('---')
+        st.write(f"## Showings results from run: {st.session_state.results['run_name']}")
+        st.write("Existing runs with the same name will be over written")
+        save_button = st.button('Save run')
+
+        if save_button:
+            print(f'saving run: {save_button}')
+            st.session_state.db.add_run(st.session_state.results)
+            st.session_state.db.zip_results()
+            # rerun to update selectbox
+            st.rerun()
 
     st.write('---')
     st.write('### Delete run')
-    st.session_state.num_runs = len(db.get_runs())
-    delete_run = st.selectbox('Select run to delete', db.get_runs())
+
+    st.session_state.num_runs = len(st.session_state.db.get_runs())
+    delete_run = st.selectbox('Select run to delete', st.session_state.db.get_runs())
     delete_button = st.button('delete run')
     delete_all_button = st.button('delete all runs')
 
     if delete_button:
         print(f'deleting run: {delete_run}')
-        db.delete_run(delete_run)
+        st.session_state.db.delete_run(delete_run)
         # update zip
-        if len(db.get_runs()) > 0:
-            db.zip_results()
+        if len(st.session_state.db.get_runs()) > 0:
+            st.session_state.db.zip_results()
         # rerun to update selectbox
-        st.experimental_rerun()
+        st.rerun()
 
     if delete_all_button:
         print(f'deleting all runs')
-        db.clear_db()
+        st.session_state.db.clear_db()
         # remove zip
         if os.path.exists('results.zip'):
             os.remove('results.zip')
         # rerun to update selectbox
-        st.experimental_rerun()
-
-
+        st.rerun()
 
     if os.path.exists('results.zip') and (st.session_state.num_runs > 0):
-        db.zip_results()
+        st.session_state.db.zip_results()
         st.write('---')
         st.write('### Download results')
         with open('results.zip', 'rb') as fp:
@@ -115,7 +129,6 @@ with st.sidebar:
                 data=fp,
                 file_name='planning_results.zip',
                 mime='application/zip')
-
 
 
 #################################################
@@ -215,76 +228,56 @@ if run_button:
     st.session_state.inputs = inputs
     st.session_state.run_name = run_name
 
-    st.session_state.results = run_lp(run_name=st.session_state.run_name,  inputs=st.session_state.inputs)
+    st.session_state.results = run_lp(
+        run_name=st.session_state.run_name,  
+        inputs_from_usr=st.session_state.inputs
+        )
 
-
-########################################################
-# function to plot hourly data
-########################################################
-
-def plot_hourly(final_df, start_date, num_days):
-
-    cols = ['hydro', 'solar', 'wind', 'batt_discharge', 'gas', 'outside_energy']
-
-    # get valid columns
-    cols = [c for c in cols if c in final_df.columns]
-
-    if (start_date is not None) and (np.any(final_df.index == pd.to_datetime(start_date))):
-        t0 = np.where(final_df.index == pd.to_datetime(start_date))[0][0]
-    else:
-        # randomly sample day
-        t0 = int(np.random.randint(0, len(final_df.index) - 24 * num_days, size=1))
-
-    start_time = final_df.index[t0]
-    end_time = final_df.index[t0 + 24 * num_days]
-
-    # find the max y value for placing the legend
-    ymax = final_df.loc[start_time:end_time, cols].sum(axis=1).max()
-
-    # col pallete
-    pal = ["steelblue", "gold", "mediumseagreen", "darkorchid", "coral", 'crimson']
-
-    ax = final_df.loc[start_time:end_time, ['2030_load']].plot.line(color='black');
-    final_df.loc[start_time:end_time, ['load_and_charge']].plot.line(ax=ax, color='black', linestyle='--');
-    final_df.loc[start_time:end_time, cols].plot.area(ax=ax, linewidth=0, figsize=(12, 6), color=pal);
-
-    ax.set_ylim(0, ymax + 250)
-    plt.ylabel('MW')
+    # rerun to show save button
+    st.rerun()
 
 
 ########################################################
 # display results and plot
 ########################################################
-st.write('# Electricity generation planning')
-st.write('## Introduction and instructions')
+# st.write('# Electricity generation planning model')
+# st.write('## Introduction')
 st.write('''
-This tools builds the optimal amount electricity generation resource (wind, solar, batteries, and gas) to serve load.
-The user can adjust input parameters in left side panel.
-Adjustments can be made to amount of capacity that can be installed, peak load, resource costs, etc.
-Once the inputs are set clicking the create run button will start the optimization, it will take a minute to return results.
-There will be a running icon in upper right hand corner to let you know the optimization is running.
-When the results are available they are displayed in the main panel.  The save button will save the run.
-The results will be available for download after they have been saved.  The download button will be displayed below the
-Delete Run section after the results have been saved.
-The run can be deleted by using the delete button at the bottom of the left side panel.
-Metrics showing how much generation is needed, costs, and generation information are displayed below.
-A plot showing the hourly results will be displayed below the run metrics.
+# Electricity generation planning model
+## Introduction
+This tool models the cost and carbon emissions for scenarios that optimize the amount of electricity generation resource
+ (wind, solar, batteries, and gas) to serve the electricity use (load). 
+The loads are based on the forecasted requirements of four northern Colorado communities. 
+The calculations are based on simplified modeling sourced from detailed utility resource software tools. 
+Users can vary the available capacity and costs by generation type, optimize for either cost or carbon emissions and 
+visualize stress tests of limited renewable resource availability. 
+
+## Instructions
+The user can adjust input parameters in the left side panel. 
+Adjustments can be made to the allowable range of capacity that can be installed, the cost of each resource type, 
+limits on gas capacity and lifecycle carbon value. 
+Default values represent reasonable starting points. 
+
+Once the inputs are set, clicking the **create run** button will start the optimization. 
+It will take approximately a minute to return results. 
+There will be a running icon in the upper right hand corner to let you know the optimization is running. 
+
+Results are displayed in the main panel. The **save run** button will be displayed in the left side panel after a run 
+is created.
+The results will be available for download after they have been saved. 
+The download button will be displayed below the Delete Run section after the results have been saved. 
+This will download all the inputs and results for each saved run.
+The run can be deleted by using the delete button at the bottom of the left side panel. 
+
+Results include values for how much of each generation type is needed (megawatts), costs (total, generation and carbon 
+in millions of dollars), and generation information are displayed below (excess, renewable, gas, emergency and carbon 
+emissions). 
+A plot showing the hourly results for up to 21 days will be displayed below the run metrics. 
 Below the plot the input parameters are shown so the inputs can be verified.
 ''')
 
 if 'results' in st.session_state:
     st.write('---')
-    st.write(f"## Showings results from run: {st.session_state.results['run_name']}")
-    st.write("Existing runs with the same name will be over writtten")
-    save_button = st.button('Save run')
-
-    if save_button:
-        print(f'saving run: {save_button}')
-        db.add_run(st.session_state.results)
-        db.zip_results()
-        # rerun to update selectbox
-        st.experimental_rerun()
-
     st.write("### Resource capacities")
     cap_mw = st.session_state.results['cap_mw']
     r1col1, r1col2, r1col3, r1col4 = st.columns(4)
@@ -292,7 +285,6 @@ if 'results' in st.session_state:
     r1col2.metric("Solar MW", int(cap_mw['solar_mw']))
     r1col3.metric("Battery MW", int(cap_mw['batt_mw']))
     r1col4.metric("Gas MW", int(cap_mw['gas_mw']))
-
 
     st.write('---')
     st.write('### Cost metrics')
@@ -307,24 +299,36 @@ if 'results' in st.session_state:
     st.write('### Generation metrics')
     r3col1, r3col2, r3col3, r3col4, r3col5 = st.columns(5)
     r3col1.metric("% excess gen", int(metrics['excess_gen_percent']))
-    r3col2.metric("% RE gen", np.round(metrics['re_percent'],1))
-    r3col3.metric("% Gas gen", np.round(metrics['gas_percent'],1))
+    r3col2.metric("% RE gen", np.round(metrics['re_percent'], 1))
+    r3col3.metric("% Gas gen", np.round(metrics['gas_percent'], 1))
     r3col4.metric("Tons CO2 (thou)", int(metrics['total_co2_thou_tons']))
     r3col5.metric("Emergency MWh", int(metrics['total_outside_energy']))
 
     st.write('---')
     st.write('### Hourly load and generation plot')
-    start_date = st.date_input('Plot start date',
-                                             datetime.date(2030, 7, 1),
-                                             datetime.date(2030, 1, 1),
-                                             datetime.date(2030, 12, 31))
-    num_days = st.slider('Number of days to plot', 1, 21, 7, 1)
+    start_date = st.date_input(
+        'Plot start date',
+        datetime.date(2030, 7, 1),
+        datetime.date(2030, 1, 1),
+        datetime.date(2030, 12, 31)
+    )
+    num_days = st.slider('Number of days to plot', 1, 28, 14, 1)
 
-    try:
-        plot_hourly(st.session_state.results['final_df'], start_date, num_days)
-        st.pyplot(fig=plt)
-    except:
-        print('plot error')
+    # create default plot ranges from user inputs
+    plot_range_start_default = start_date.strftime("%Y-%m-%d %H:%M:%S")
+    plot_range_end_default = (
+            start_date + pd.Timedelta(f'{num_days}d')
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    fig = utils.get_resource_stack_plot(
+        st.session_state.results['final_df'],
+        plot_range_start_default,
+        plot_range_end_default
+    )
+    st.plotly_chart(fig)
+
+    # utils.plot_hourly(st.session_state.results['final_df'], start_date, num_days)
+    # st.pyplot(fig=plt)
 
     st.write('---')
     st.write('### Inputs')
