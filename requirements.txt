@@ -69,7 +69,7 @@ narwhals==2.23.0
     # via
     #   plotly
     #   shiny
-numpy==2.5.1
+numpy==2.4.6
     # via
     #   ortools
     #   pandas
@@ -130,8 +130,6 @@ python-multipart==0.0.32 ; sys_platform != 'emscripten'
     # via shiny
 questionary==2.1.1 ; sys_platform != 'emscripten'
     # via shiny
-setuptools==83.0.0
-    # via shiny
 shiny==1.6.3
     # via
     #   electric-generation-planning
@@ -161,6 +159,7 @@ typing-extensions==4.16.0
     #   anyio
     #   anywidget
     #   htmltools
+    #   ipython
     #   opentelemetry-api
     #   ortools
     #   pydantic

@@ -8,7 +8,7 @@ root) is the Shiny UI; the model and its helpers live in `src/`
 (`LP.py` the linear program, `parameters.py` the default inputs and shared
 cost/emission formulas, `db.py` an in-memory SQLite results store,
 `utils.py` the Plotly chart), with the hourly load/generation profiles in
-`src/profiles.csv`. The project is packaged with `uv` on Python 3.12,
+`src/profiles.csv`. The project is packaged with `uv` on Python 3.11,
 containerized under `docker/`, and deployed to **Posit Connect Cloud**
 (`app.py` at the root, `requirements.txt` + `manifest.json`).
 
@@ -150,9 +150,11 @@ or the model.
   tooling, docs, and the reference PDFs out of the bundle — leaving only
   `app.py`, `src/`, and `requirements.txt` plus a couple of small root
   files. Change what ships by editing `EXCLUDES`, not the docs.
-- **Python 3.12 is pinned** (`.python-version`, `requires-python`) because
-  3.12 is the newest version Posit Connect Cloud supports. Don't bump it
-  past 3.12 without confirming Connect Cloud runtime support.
+- **Python 3.11 is pinned** (`.python-version`, `requires-python`) because
+  that is the Python runtime Posit Connect Cloud provisions for git-based
+  deploys (it did not honor a 3.12 request). Don't change it without
+  confirming what Connect Cloud actually runs — a mismatch fails the deploy
+  when a pinned dep (e.g. `numpy`) needs a newer Python than the runtime.
 - **Tests:** `tests/test_lp.py` (fast unit tests + a slower full-solve
   integration set marked `slow`) and `tests/test_app.py` (Playwright
   end-to-end driving the Shiny app, marked `e2e`).

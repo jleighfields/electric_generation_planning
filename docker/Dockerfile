@@ -1,6 +1,6 @@
-# Shiny for Python app served with uv on Python 3.12
-# (3.12 is the newest Python that Posit Connect Cloud supports).
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# Shiny for Python app served with uv on Python 3.11
+# (matches the Python runtime Posit Connect Cloud provisions).
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
 WORKDIR /electric_generation_planning
 

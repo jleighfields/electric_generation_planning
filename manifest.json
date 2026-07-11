@@ -6,7 +6,7 @@
     "entrypoint": "app"
   },
   "python": {
-    "version": "3.12.11",
+    "version": "3.11.15",
     "package_manager": {
       "name": "pip",
       "version": "26.1.2",
@@ -15,15 +15,15 @@
   },
   "environment": {
     "python": {
-      "requires": "~=3.12.0"
+      "requires": "~=3.11.0"
     }
   },
   "files": {
     "requirements.txt": {
-      "checksum": "39e95b07b11e67f4d07aec1cd99c9bde"
+      "checksum": "b17081fba0c22e76dd18b1bf1ef25cf6"
     },
     ".python-version": {
-      "checksum": "61939823fbcc7e8de3b61ab105331baf"
+      "checksum": "c0479ff484dacd51dc5ba0461b16b9bf"
     },
     "LICENSE": {
       "checksum": "a00a7eb65c0848c73726b0651a55c5f4"
