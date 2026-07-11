@@ -1,17 +1,18 @@
-FROM python:3.11
+# Shiny for Python app served with uv on Python 3.12
+# (3.12 is the newest Python that Posit Connect Cloud supports).
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
 WORKDIR /electric_generation_planning
-COPY requirements.txt requirements.txt
 
-RUN python3 -m venv venv
-RUN . venv/bin/activate
-RUN python3 -m pip install --upgrade pip
-RUN pip install -r requirements.txt
+# Install dependencies first (cached layer) from the locked environment.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
 
+# Copy the application code.
+COPY app.py ./
 COPY ./src ./src
-COPY ./.streamlit ./.streamlit
-COPY ./csv ./csv
 
 EXPOSE 8501
 
-ENTRYPOINT ["streamlit", "run"]
-CMD ["src/app.py"]
+# app.py is at the repo root; serve on all interfaces for the container.
+ENTRYPOINT ["uv", "run", "--no-dev", "shiny", "run", "--host", "0.0.0.0", "--port", "8501", "app.py"]

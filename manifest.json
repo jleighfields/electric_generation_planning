@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "locale": "en_US.UTF-8",
+  "metadata": {
+    "appmode": "python-shiny",
+    "entrypoint": "app"
+  },
+  "python": {
+    "version": "3.12.11",
+    "package_manager": {
+      "name": "pip",
+      "version": "26.1.2",
+      "package_file": "requirements.txt"
+    }
+  },
+  "environment": {
+    "python": {
+      "requires": "~=3.12.0"
+    }
+  },
+  "files": {
+    "requirements.txt": {
+      "checksum": "39e95b07b11e67f4d07aec1cd99c9bde"
+    },
+    ".python-version": {
+      "checksum": "61939823fbcc7e8de3b61ab105331baf"
+    },
+    "LICENSE": {
+      "checksum": "a00a7eb65c0848c73726b0651a55c5f4"
+    },
+    "README.md": {
+      "checksum": "fc8475c924fbda9ceba30161e331c36c"
+    },
+    "app.py": {
+      "checksum": "b19a45cc9ba4e7923cade657285941cb"
+    },
+    "src/LP.py": {
+      "checksum": "6e5bdbf38e2eb8be040817c7c22246f2"
+    },
+    "src/__init__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "src/db.py": {
+      "checksum": "ac40f62c25a25bc218d3eca97205bada"
+    },
+    "src/parameters.py": {
+      "checksum": "cb1aced5091f82256d95d9e88b7f6b0c"
+    },
+    "src/profiles.csv": {
+      "checksum": "4dd5cfa9c044b03bf742cbc772c01e9c"
+    },
+    "src/utils.py": {
+      "checksum": "cd17ccea43da201c65385d20b3db5335"
+    }
+  }
+}

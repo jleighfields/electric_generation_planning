@@ -1,0 +1,48 @@
+[project]
+name = "electric-generation-planning"
+version = "0.1.0"
+description = "Shiny for Python app that optimizes an electricity generation portfolio (wind/solar/battery/gas) with a linear program."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "shiny",
+    "shinywidgets",
+    "shinyswatch",
+    "pandas",
+    "plotly",
+    "ortools",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-playwright",
+    "rsconnect-python",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+markers = [
+    "slow: exercises a full LP solve (~15s+); deselect with '-m \"not slow\"'",
+    "e2e: browser end-to-end tests (require 'playwright install chromium')",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F pyflakes+pycodestyle, I import-sort, B bugbear, SIM simplify, S bandit.
+# E501 (line length) is left to human review, not enforced.
+select = ["E", "F", "I", "B", "SIM", "S"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# pytest's model is `assert`; test data is code-generated fixtures.
+"tests/**" = ["S101"]
+# db.py builds SQL only from the fixed self.table_names constants (no user
+# input), and its __main__ smoke test uses assert.
+"src/db.py" = ["S608", "S101"]
+# the deploy script shells out to uv/rsconnect with hardcoded arg lists.
+"scripts/**" = ["S603"]

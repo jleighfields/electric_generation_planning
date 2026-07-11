@@ -1,8 +1,8 @@
 # build image
-docker build -t streamlit_elect_gen:latest -f docker/Dockerfile .
+docker build -t shiny_elect_gen:latest -f docker/Dockerfile .
 
 # list images
 docker image ls
 
 # run container
-docker run -p 8501:8501 streamlit_elect_gen:latest
+docker run -p 8501:8501 shiny_elect_gen:latest
