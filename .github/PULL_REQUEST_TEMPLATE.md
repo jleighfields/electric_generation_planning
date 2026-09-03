@@ -28,7 +28,7 @@
      let CI be the second opinion rather than the only one.
 
      The browser tests are NOT in the required check — they need a browser
-     download and a ~15s background solve, so they run after the merge. A
+     download and a full background solve, so they run after the merge. A
      break in them lands first and is noticed second; if your change touches
      the UI, run them yourself. -->
 

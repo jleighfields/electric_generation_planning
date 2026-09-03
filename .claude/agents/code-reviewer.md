@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: Review pass over the changed files or a given path. Given the argument `commit`, runs the code-quality-review and security-scan skills (report-only) then the comment-docstring skill (edits in place) and stops — the pass for a single commit. Without it, adds the test suite, a phase that mutates code in a throwaway worktree to check the tests the change set touched can still fail, and a phase writing a failing test for confirmed defects worth pinning — the branch pass before its pull request opens. Leaves the suite red where it wrote one. Use before committing, before opening a pull request, or when asked to "review and document" a file or directory.
-tools: Read, Glob, Grep, Bash, Edit
+tools: Read, Glob, Grep, Bash, Edit, Write
 model: inherit
 ---
 # Review + Docs Agent
@@ -199,7 +199,7 @@ pay it. Where a finding turns on what the rendered UI does, it is unsettled in
 the sense above — say so and name the run that would settle it.
 
 **`slow` is not in that category — run it.** The full pass runs
-`uv run pytest`, which includes the ~15s LP solve. That solve is the only test
+`uv run pytest`, which includes the full LP solve. That solve is the only test
 exercising a full optimization, so a review that skipped it has not seen the
 model run at all.
 
@@ -234,8 +234,9 @@ outright the one check none of them names:
   this second run, which is the common case.
 - **Run it the way the workflow does** — `uv run pytest -m "not e2e" -q`,
   which is `test.yml`'s command. `pytest-xdist` is not a dependency here, so
-  `-n auto` is an error rather than a speedup; the suite is ten tests and runs
-  in about fifteen seconds serially.
+  `-n auto` is an error rather than a speedup. That command collects eight
+  tests — the repo has ten, two of them `e2e` — and takes about half a minute,
+  nearly all of it the one full LP solve.
 - **The target set once**, above. Where a skill's own Steps re-derive it, use
   the set you already have.
 

@@ -12,57 +12,15 @@ cost/emission formulas, `db.py` an in-memory SQLite results store,
 containerized under `docker/`, and deployed to **Posit Connect Cloud**
 (`app.py` at the root, `requirements.txt` + `manifest.json`).
 
-## Skills (Slash Commands)
+## Skills and agents
 
-Custom skills automate the review workflows:
-
-| Command | What it does |
-|---------|-------------|
-| `/code-quality-review [file-or-dir]` | Review code for correctness bugs plus readability, documentation, and minimal form (simplification per the Minimalism rules) — report-only. (Named to avoid colliding with Claude Code's built-in `/code-review`.) |
-| `/comment-docstring <file-or-dir>` | Review and fix docstrings, type hints, inline comments; sweep the README and `CLAUDE.md` for stale prose (edits in place) |
-| `/security-scan [file-or-dir]` | Scan for leaked secrets (hardcoded tokens/keys, tracked `.env`/credential files) and unsafe patterns (report-only) |
-| `/simplify-audit [file-or-dir]` | Repo-wide bloat audit — reports a delete-list of dead code, unused deps, and over-built abstractions (report-only) |
-| `/test-review [file-or-dir]` | Mutation pass: breaks the code a test covers, in a throwaway worktree, to confirm the test can still fail. Report-only, and it restores the tree before reporting. |
-
-Skills are defined in `.claude/skills/` and committed to the repo.
-
-## Agents
-
-Custom subagents bundle a workflow into a single delegated pass — to
-combine multiple steps, or to run a heavy read-only pass in an isolated
-context so the main session stays clean:
-
-| Agent | What it does |
-|-------|-------------|
-| `code-reviewer` | Two-tier review pass. `code-reviewer commit` runs the `code-quality-review` and `security-scan` skills (report-only) then `comment-docstring` (edits in place) over what is being committed. With no argument it adds the suite over the whole branch, a `test-review` mutation phase, and a phase writing a failing test for any confirmed defect. |
-| `simplify-auditor` | Runs the `simplify-audit` skill in an isolated context and returns a report-only bloat delete-list; keeps the repo-wide grep/read churn out of the main session |
+Five review skills live in `.claude/skills/` and two subagents in
+`.claude/agents/`; `.claude/README.md` indexes them, gives each agent's default
+target, and sets out which file owns which rule. Their names and descriptions
+are injected at session start, so none is listed here.
 
 **Run `code-reviewer commit` before committing non-trivial changes**, and the
 full pass — `code-reviewer` with no argument — before opening a pull request.
-See *Review in two tiers* below; running the full pass per commit costs the
-suite and a mutation worktree on every commit, which is what the two tiers
-exist to avoid.
-Invoke agents by name, optionally with a file or directory. With no
-argument, `code-reviewer` runs the **full pass** over the whole branch
-(`git diff` against the merge-base with `origin/main`); `code-reviewer commit`
-is the per-commit tier and defaults to the changed files
-(`git diff --name-only HEAD` unioned with `git ls-files --others
---exclude-standard`). `simplify-auditor` defaults to the whole repo:
-
-```
-> use the code-reviewer agent
-> code-reviewer commit    # the per-commit tier, over the changed files
-> code-reviewer src/LP.py
-> code-reviewer            # the full pass, over the whole branch
-> use the simplify-auditor agent
-> simplify-auditor         # whole-repo bloat audit, isolated context
-```
-
-Each agent reads its skill's `SKILL.md` at runtime rather than copying
-the checklist, so it stays in sync as the skills evolve. Agents are
-defined in `.claude/agents/` and committed to the repo. New agent
-files are discovered at CLI start, so restart the session after adding
-one.
 
 ## Review in two tiers
 
@@ -83,11 +41,12 @@ scope" — surface it for an explicit decision.
 `main` is protected and takes no direct pushes, so every change arrives
 through a squash-merged pull request. The required `test` check runs
 `uv run ruff check .`, `uv run ruff format --check .` and
-`uv run pytest -m "not e2e"` — the last includes the ~15s LP solve; the browser
+`uv run pytest -m "not e2e"` — the last includes a full LP solve, which
+dominates its runtime; the browser
 tests run after the merge in `e2e.yml`.
 
-**The suite is small — ten tests — so a green check is weaker evidence here
-than the word "passing" suggests.** Say what you actually verified rather
+**The gate runs eight of the repo's ten tests — the other two carry the `e2e`
+marker — so a green check is weaker evidence here than "passing" suggests.** Say what you actually verified rather
 than leaning on it.
 
 ## Prose is professional and factual
@@ -197,18 +156,17 @@ it, copy it, or compile it into a parallel mirror.
   artifacts* (see Repo conventions) that must be regenerated from it, not
   hand-edited.
 
-**Pattern to preserve (was the marquee drift bug):** the CO2 emission
-factors and resource cost formulas used to be computed **twice** — once in
-the UI path and once in the model defaults — and had drifted (30-year vs
-20-year asset life). They are now consolidated into
-`parameters.cost_inputs(...)`, which both `app.build_inputs` and
-`parameters.get_base_inputs` invoke with their own knob values. Keep it that way: if you touch a cost/emission formula, change
-it in `parameters.cost_inputs` only. Do not re-inline the math into the app
-or the model.
+**Pattern to preserve:** the CO2 emission factors and resource cost formulas
+are computed once, in `parameters.cost_inputs(...)`, which both
+`app.build_inputs` and `parameters.get_base_inputs` invoke with their own knob
+values. Change a cost or emission formula there and nowhere else — two copies
+carrying different asset lives give two different answers, which is how these
+came to be consolidated.
 
 **Common anti-patterns to refuse / fix on sight:**
-- The app or a test hardcoding a value `src/LP.py` already defines
-  (a capacity bound, the gas restriction, a battery parameter).
+- The app or a test hardcoding a value `src/parameters.py` already defines
+  (a capacity bound, the gas restriction, a battery parameter). `src/LP.py`
+  holds none of them; it merges caller overrides over `get_base_inputs()`.
 - Two blocks in different files that are "supposed to" stay identical
   (the emission/cost math above). Collapse to one home.
 - A function default that silently disagrees with the constant the
@@ -220,7 +178,9 @@ or the model.
 
 - **`app.py` lives at the repo root** — Posit Connect Cloud expects the
   Shiny entrypoint there (app object `app`). It imports the model via the
-  package path (`from src.LP import run_lp`, `from src import db, utils`);
+  package path (`from src.LP import run_lp`, `from src import parameters`,
+  `from src.db import RESULTS_ZIP, ResultsDB`, `from src.utils import
+  get_resource_stack_plot`);
   `run_lp` reads `src/profiles.csv` relative to the working directory
   (repo root), so keep the cwd at the root when running or testing.
 - **The model is UI-agnostic and headless-testable.** `src/LP.py` has no
@@ -266,5 +226,7 @@ or the model.
 - **Commit messages:** describe the change only — do **not** add a
   `Co-Authored-By: Claude` trailer or a "Generated with Claude Code" line.
 - **Style:** Google-style docstrings (summary, Args, Returns),
-  `X | None` over `Optional[X]`, direct imports for type hints, no `_`
-  prefix on function names except internal helpers.
+  `X | None` over `Optional[X]`, direct imports for type hints. A `_` prefix
+  marks a Shiny `@reactive.effect` binding or another module-internal helper
+  and nothing else — a function reached from outside its module never carries
+  one.

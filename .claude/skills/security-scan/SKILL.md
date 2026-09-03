@@ -58,8 +58,8 @@ Run `git ls-files` and flag any tracked file that should never be committed:
   `*.kdbx`, `.netrc`, `.pgpass`, `.htpasswd`.
 - `rsconnect-python/` config directories. The Posit Connect Cloud deploy is
   git-based and needs no key in the repo, but one written locally holds a
-  working API key — and `.gitignore` does not cover it, so the coverage
-  check below applies to it.
+  working API key. `.gitignore` covers the directory today; confirm that line
+  is still there, and flag any tracked file under it.
 
 A tracked secret file is **Must Fix**: `git rm --cached` it, add it to
 `.gitignore`, and **rotate** anything it exposed (it is already in history).
@@ -79,18 +79,31 @@ that in the report — a clean result here is weaker evidence than a clean
 
 Scan for assignments of a secret-looking name to a literal, and known
 token shapes.
-Pattern reference (ripgrep regex):
+These are in a fenced block rather than a table because a markdown cell needs
+`|` escaped as `\|`, and a pattern pasted with the escapes intact matches a
+literal pipe and reports clean — the silent no-op this scan exists to catch.
+`rg` is not installed here, so they are written for `grep -rniE`: `-i` supplies
+the case-insensitivity that a PCRE `(?i)` prefix would, and `grep -E` does not
+accept.
 
-| What | Pattern |
-|---|---|
-| Secret-named literal | `(?i)(pass(word|wd)?\|secret\|token\|api[_-]?key\|client[_-]?secret\|access[_-]?key\|auth[_-]?token\|private[_-]?key)\s*[:=]\s*["'][^"']{6,}["']` |
-| Private key block | `-----BEGIN (RSA \|EC \|OPENSSH \|DSA \|PGP )?PRIVATE KEY-----` |
-| AWS access key id | `AKIA[0-9A-Z]{16}` |
-| GitHub token | `gh[pousr]_[A-Za-z0-9]{36,}` or `github_pat_[A-Za-z0-9_]{60,}` |
-| Slack token | `xox[baprs]-[A-Za-z0-9-]{10,}` |
-| Bearer/JWT | `(?i)bearer\s+[A-Za-z0-9._\-]{20,}` / `eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}` |
-| URL with embedded creds | `[a-z][a-z0-9+.\-]*://[^/\s:@]+:[^/\s:@]+@` |
-| Connection-string password | `(?i)(password\|pwd)=[^;"'\s]{4,}` |
+```
+# Secret-named literal
+(pass(word|wd)?|secret|token|api[_-]?key|client[_-]?secret|access[_-]?key|auth[_-]?token|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'][^"']{6,}["']
+# Private key block
+-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----
+# Token shapes: AWS, GitHub, Slack, JWT
+AKIA[0-9A-Z]{16}
+gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,}
+xox[baprs]-[A-Za-z0-9-]{10,}
+bearer[[:space:]]+[A-Za-z0-9._-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}
+# Credentials in a URL or a connection string
+[a-z][a-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]:@]+@
+(password|pwd)=[^;"'[:space:]]{4,}
+```
+
+**Watch one of these match before trusting a clean run.** Point it at a file
+you have planted a fixture secret in; a pattern that finds nothing looks
+exactly like a repo that holds nothing.
 
 For each hit, **redact the value in your report** — show the variable name
 and first few characters only, never the full secret.
@@ -116,9 +129,15 @@ finding (as `code-quality-review` cites ruff codes):
 - **Shell injection surface** — `S602`/`S604`/`S605` (`shell=True`),
   `S607` (partial executable path).
 - **TLS verification disabled** — `S501` (`verify=False`).
-- **Other** — `S104` (bind all interfaces), `S324` (weak hash). The
-  `--host 0.0.0.0` in `docker/Dockerfile` is deliberate for container
-  serving, not a leaked bind-all bug.
+- **Subprocess without `shell=True`** — `S603`, on an argv built into a
+  variable rather than written as a literal list.
+- **SQL built by string interpolation** — `S608`.
+- **Other** — `S104` (bind all interfaces), `S324` (weak hash).
+
+`S603` and `S608` are the two that fire in this repo, both under per-file
+ignores that record why; `--select S` over the tracked tree is otherwise
+clean. The `--host 0.0.0.0` in `docker/Dockerfile` is deliberate for container
+serving — and note ruff never opens a Dockerfile, so `S104` cannot report it.
 
 Treat any `S`-rule hit on the target files as **at least Should Fix**;
 `S105-S107` (hardcoded secret) is **Must Fix**. Do not re-flag the

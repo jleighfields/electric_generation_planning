@@ -1,7 +1,7 @@
 name: e2e
 
 # Playwright tests driving the Shiny app in a real browser. Kept off the
-# pull-request path because the browser download and the ~15s background solve
+# pull-request path because the browser download and the background solve
 # in test_create_run_shows_results together cost more than a gate should.
 #
 # NOT a required status check — a scheduled workflow cannot report on a pull

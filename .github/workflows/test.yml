@@ -1,7 +1,7 @@
 name: test
 
 # The required check on pull requests into main. Runs everything but the
-# browser tests, `slow` included — a 15s LP solve is worth paying for on a
+# browser tests, `slow` included — the LP solve is worth paying for on a
 # gate, and it is the only test that exercises a full optimization.
 
 on:

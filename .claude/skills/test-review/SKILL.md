@@ -47,7 +47,7 @@ between calls, so every later block re-assigns them from the recorded literal.
 ```bash
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-WT="$(dirname "$ROOT")/.test-review/$(basename "$ROOT")/$(git rev-parse --abbrev-ref HEAD)-$(git rev-parse --short HEAD)"
+WT="$(dirname "$ROOT")/.test-review/$(basename "$ROOT")/$(git rev-parse --abbrev-ref HEAD | tr / -)-$(git rev-parse --short HEAD)"
 git worktree add --detach "$WT" HEAD
 echo "root:     $ROOT"
 echo "worktree: $WT"
@@ -114,7 +114,7 @@ cd "$WT"
 uv run python - "$WT/src/LP.py" <<'PY'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
-t = p.read_text(encoding="utf-8", newline="")
+t = p.read_text(encoding="utf-8")
 old = "<a line copied verbatim from the file above>"
 assert t.count(old) == 1, f"mutation site not unique: {t.count(old)}"
 p.write_text(t.replace(old, "    return None"), encoding="utf-8", newline="")
@@ -125,9 +125,11 @@ PY
 untouched, the test passes, and the run reports a test as checked without
 changing the code it covers.
 
-**`newline=""` on both the read and the write.** Without it Python translates
-line endings, so on Windows a one-line edit rewrites every line — and a hash or
-manifest test then fails for a reason unrelated to the mutation.
+**`newline=""` on the write only.** It stops Python translating `\n` on the
+way out, so a one-line edit stays one line instead of rewriting the file. Do
+not pass it to `read_text` — that parameter arrived in Python 3.13 and
+`.python-version` pins 3.11, so the read raises `TypeError`, the mutation never
+lands, and the targeted test passes while reporting itself as checked.
 
 **If the canary does not fail, the run is invalid.** Report that and stop.
 
@@ -211,7 +213,7 @@ the mutation could not be constructed goes in the scope statement.
 - **The suite reaches no network and needs no credentials.** It is a pure LP
   model over a committed load profile.
 - **Exclude the `e2e` marker.** It drives the Shiny app through a real
-  browser, and one of its two tests waits on the ~15s background solve. A
+  browser, and one of its two tests waits on a full background solve. A
   browser test is also the wrong shape for mutation — it asserts on wiring
   rather than on a computed value, so most mutations to `src/` leave it green
   by design.

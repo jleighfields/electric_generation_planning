@@ -251,8 +251,9 @@ Must Fix.
 - **Google-style docstrings** with summary, Args, Returns.
 - **`X | None`** syntax (not `Optional[X]`).
 - **Direct imports** for type hints (no forward references).
-- **No `_` prefix** on function names. Internal helpers still get
-  real names.
+- **`_` prefix** — per CLAUDE.md's **Style** rule: a Shiny reactive binding
+  or a module-internal helper may carry one; nothing reached from outside its
+  module may.
 
 ### Code duplication & helper functions
 

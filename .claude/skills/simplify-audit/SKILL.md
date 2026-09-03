@@ -48,9 +48,10 @@ Source of Truth for Parameter Values** section.
   transitively — a numeric library `pandas` or `ortools` uses but nothing here
   imports — does not belong in the direct dependency list.
 - **`app.py` and `tests/` are the call sites for nearly all of `src/`.** Grep
-  both before declaring a `src/` symbol dead — `from src.LP import run_lp`,
-  `from src import db, utils` and the test imports are how this code is
-  reached.
+  both before declaring a `src/` symbol dead. The live spellings are
+  `from src.LP import run_lp`, `from src import parameters`, `from src.db
+  import RESULTS_ZIP, ResultsDB` and `from src.utils import
+  get_resource_stack_plot` — grep the symbol, not a remembered import line.
 - **Watch the `__main__` blocks in `src/LP.py` and `src/db.py`.** A helper
   that looks used only there — `make_fake_results` is the example — is also
   imported by the tests. Confirm before listing it.
@@ -84,9 +85,10 @@ Source of Truth for Parameter Values** section.
 - **Repo-wide dead exports** — public symbols (functions, classes,
   constants) with no references anywhere in live code. This is broader
   than `code-quality-review`, which only sees the diff.
-- **Size signals** — files > ~800 lines or functions > ~80 lines,
-  reported as bloat candidates. Cite them; do NOT prescribe the split here
-  (defer the "how" to `code-quality-review`'s function-length guidance).
+- **Size signals** — files over ~800 lines, and functions over the length
+  threshold in `code-quality-review`'s **Readability** checklist. Cite them;
+  do NOT prescribe the split here, and do not carry a second copy of that
+  threshold — two numbers for one rule drift apart.
 - **Dead scaffolding** — commented-out code blocks and stale TODO stubs
   that were never finished.
 

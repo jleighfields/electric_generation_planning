@@ -304,7 +304,7 @@ name the units where a number has any, and show enough of the return to
 answer the question the example exists to answer — not the whole frame.
 
 **Run it before leaving it in.** An example is a claim about behaviour, so
-CLAUDE.md's *Verify by running* covers it like any other: paste it against
+`code-quality-review`'s *Verify by running* covers it like any other: paste it against
 the current code and compare. This is also the reason to keep them scarce.
 Each one is a claim someone has to re-check when the function changes, and
 an example that has gone stale misleads because it still looks tested.
