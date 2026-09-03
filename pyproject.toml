@@ -27,6 +27,12 @@ markers = [
     "slow: exercises a full LP solve (~15s+); deselect with '-m \"not slow\"'",
     "e2e: browser end-to-end tests (require 'playwright install chromium')",
 ]
+# Without this a bare `pytest` collects the browser tests and fails for anyone
+# who has not run `playwright install chromium`. `slow` is left in: a 15s LP
+# solve is worth paying for on every run, and it is what the required CI check
+# gates on. An explicit `-m` on the command line overrides this, so
+# `pytest -m e2e` still works.
+addopts = "-m 'not e2e'"
 
 [tool.ruff]
 line-length = 100

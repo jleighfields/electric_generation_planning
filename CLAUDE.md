@@ -18,10 +18,11 @@ Custom skills automate the review workflows:
 
 | Command | What it does |
 |---------|-------------|
-| `/code-quality [file-or-dir]` | Review code for readability, documentation, onboarding, and minimal form (simplification per the Minimalism rules) — report-only. (Named to avoid colliding with Claude Code's built-in `/code-review`.) |
-| `/comment-docstring <file-or-dir>` | Review and fix docstrings, type hints, inline comments; sweep the README for stale prose (edits in place) |
+| `/code-quality-review [file-or-dir]` | Review code for correctness bugs plus readability, documentation, and minimal form (simplification per the Minimalism rules) — report-only. (Named to avoid colliding with Claude Code's built-in `/code-review`.) |
+| `/comment-docstring <file-or-dir>` | Review and fix docstrings, type hints, inline comments; sweep the README and `CLAUDE.md` for stale prose (edits in place) |
 | `/security-scan [file-or-dir]` | Scan for leaked secrets (hardcoded tokens/keys, tracked `.env`/credential files) and unsafe patterns (report-only) |
 | `/simplify-audit [file-or-dir]` | Repo-wide bloat audit — reports a delete-list of dead code, unused deps, and over-built abstractions (report-only) |
+| `/test-review [file-or-dir]` | Mutation pass: breaks the code a test covers, in a throwaway worktree, to confirm the test can still fail. Report-only, and it restores the tree before reporting. |
 
 Skills are defined in `.claude/skills/` and committed to the repo.
 
@@ -33,19 +34,26 @@ context so the main session stays clean:
 
 | Agent | What it does |
 |-------|-------------|
-| `code-reviewer` | Pre-commit pass: runs the `code-quality` and `security-scan` skills (report-only) then the `comment-docstring` skill (edits in place) over the changed files or a given path |
+| `code-reviewer` | Two-tier review pass. `code-reviewer commit` runs the `code-quality-review` and `security-scan` skills (report-only) then `comment-docstring` (edits in place) over what is being committed. With no argument it adds the suite over the whole branch, a `test-review` mutation phase, and a phase writing a failing test for any confirmed defect. |
 | `simplify-auditor` | Runs the `simplify-audit` skill in an isolated context and returns a report-only bloat delete-list; keeps the repo-wide grep/read churn out of the main session |
 
-**Run the `code-reviewer` agent before committing non-trivial changes.**
+**Run `code-reviewer commit` before committing non-trivial changes**, and the
+full pass — `code-reviewer` with no argument — before opening a pull request.
+See *Review in two tiers* below; running the full pass per commit costs the
+suite and a mutation worktree on every commit, which is what the two tiers
+exist to avoid.
 Invoke agents by name, optionally with a file or directory. With no
-argument, `code-reviewer` defaults to the changed files
-(`git diff --name-only HEAD` plus untracked) and `simplify-auditor`
-defaults to the whole repo:
+argument, `code-reviewer` runs the **full pass** over the whole branch
+(`git diff` against the merge-base with `origin/main`); `code-reviewer commit`
+is the per-commit tier and defaults to the changed files
+(`git diff --name-only HEAD` unioned with `git ls-files --others
+--exclude-standard`). `simplify-auditor` defaults to the whole repo:
 
 ```
 > use the code-reviewer agent
+> code-reviewer commit    # the per-commit tier, over the changed files
 > code-reviewer src/LP.py
-> code-reviewer            # defaults to all changed files
+> code-reviewer            # the full pass, over the whole branch
 > use the simplify-auditor agent
 > simplify-auditor         # whole-repo bloat audit, isolated context
 ```
@@ -55,6 +63,90 @@ the checklist, so it stays in sync as the skills evolve. Agents are
 defined in `.claude/agents/` and committed to the repo. New agent
 files are discovered at CLI start, so restart the session after adding
 one.
+
+## Review in two tiers
+
+Both tiers are run by the `code-reviewer` agent, and the difference is what
+each is defined over:
+
+- **`commit`, per commit, over what is being committed.** The three
+  report-and-fix skills, and nothing else. It does **not** run the suite —
+  you run the tests the commit can reach.
+- **The full pass, per branch, before its pull request opens.** Adds the
+  suite over the whole change, the `test-review` mutation phase, and a
+  failing test pinning any confirmed defect.
+
+**Resolve or waive every Must Fix and Should Fix before opening the pull
+request.** Never let a finding lapse by calling it "pre-existing" or "out of
+scope" — surface it for an explicit decision.
+
+`main` is protected and takes no direct pushes, so every change arrives
+through a squash-merged pull request. The required `test` check runs
+`uv run ruff check .`, `uv run ruff format --check .` and
+`uv run pytest -m "not e2e"` — the last includes the ~15s LP solve; the browser
+tests run after the merge in `e2e.yml`.
+
+**The suite is small — ten tests — so a green check is weaker evidence here
+than the word "passing" suggests.** Say what you actually verified rather
+than leaning on it.
+
+## Prose is professional and factual
+
+**Everything written here — comments, docstrings, READMEs, commit messages,
+pull-request bodies, skills and agents — states what is true and how the
+reader can check it.** A sentence that rates something without evidence
+describes the author's opinion, not the code's behavior. When the code
+changes, unsupported ratings do not update with it.
+
+Common categories to avoid: unmeasured rankings, personified programs where
+the verb stands in for a mechanism, unmeasured cost or effort claims,
+aesthetic verdicts like "elegant" or "hacky", aphorisms, and filler run-ups.
+See `comment-docstring` for rewrites, greps, and the categories that need
+manual review.
+
+**A claim about the model's output is a number or it is nothing.** Name the
+objective, the inputs, and what moved. "The new constraint gives a better
+portfolio" is the exact sentence this section exists to prevent — better on
+which metric, by how much, against which run?
+
+**Argument is not editorializing.** State each claim with its reason, in the
+same sentence or the next one — for example, "two copies of the same value
+drift apart over time." Give the reader something to check; keep the
+reasoning and drop unsupported ratings.
+
+Judge sentences in context — some individual words that look like offenders
+are fine. See `comment-docstring` for details.
+
+## Comments & docstrings are self-contained
+
+**Every comment, docstring, and doc must stand on its own for a reader who
+has the repo and nothing else**, and must describe the code as it is now.
+References that only make sense outside the repo, or only to people involved
+in the original conversation, break for future readers.
+
+Common categories to avoid: references to commits, tickets, "as discussed",
+earlier versions of the code, shortened domain terms that collapse to common
+English words, and bare dates. See `comment-docstring` for examples and
+greps.
+
+Describe the thing directly — what it does, what the constraint is, why this
+way rather than the obvious alternative. Test: **delete every ticket and
+commit message; would this sentence still teach a new reader anything?**
+
+**An LP constraint is where this matters most.** The expression says what is
+forbidden; only a comment can say why that bound and not another one.
+
+Point to durable references freely: a README section, another module, an
+external spec. Ask whether the reference will still exist a year from now.
+
+- **Pull-request and issue bodies, at a stricter bar.** Their reader has the
+  diff and little else, so even a pointer into this repo fails when the diff
+  omits the file it points at. Name the thing, not its number.
+  `.github/PULL_REQUEST_TEMPLATE.md` carries this reminder at the point of
+  writing.
+- **Directory READMEs point, never restate.** Each says what belongs in its
+  directory and links to whatever owns the detail. Duplicated descriptions go
+  stale when the code moves.
 
 ## Minimalism (write less)
 
@@ -159,7 +251,8 @@ or the model.
   integration set marked `slow`) and `tests/test_app.py` (Playwright
   end-to-end driving the Shiny app, marked `e2e`).
   - Fast gate: `uv run pytest -m "not slow and not e2e"`.
-  - Full LP checks: `uv run pytest -m slow`.
+  - Full LP checks: `uv run pytest -m "slow and not e2e"`. Plain `-m slow`
+    also collects the browser test, which carries both markers.
   - Browser e2e: `uv run pytest -m e2e` (needs
     `uv run playwright install chromium` once).
   - **Run the e2e suite whenever `app.py` or `src/utils.py` (the plot)

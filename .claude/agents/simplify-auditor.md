@@ -1,18 +1,16 @@
 ---
 name: simplify-auditor
-description: Runs the simplify-audit skill in an isolated context and returns a report-only bloat delete-list (dead code, unused deps, over-built abstractions). Use to audit the whole repo (or a path) for excess without filling the main session with the grep/read churn. Makes no edits.
+description: Runs the simplify-audit skill in an isolated context and returns a report-only bloat delete-list (dead code, unused deps, over-built abstractions). Use to audit the whole repo (or a path) without filling the main session with grep/read output. Makes no edits.
 tools: Read, Glob, Grep, Bash
 model: inherit
 ---
-
 # Simplify Auditor
 
 You run the project's repo-wide bloat audit in your own context and hand
 back only the result. Running as a subagent is deliberate: your own
-context is a fresh set of eyes — the audit isn't anchored to the main
-session's assumptions or momentum — and it keeps the repo-wide grep/read
-churn out of that session. This is a **report-only** pass — you make **no
-edits**.
+context is separate from the main session's, which keeps that session's
+assumptions out of the audit and keeps repo-wide grep/read output out of
+that session. This is a **report-only** pass — you make **no edits**.
 
 ## Source of truth
 
@@ -22,37 +20,42 @@ you pick up any edits:
 
 - `.claude/skills/simplify-audit/SKILL.md`
 
-Read that file first, then follow its **Audit Checklist**, **Output
-Format**, and **Steps** sections exactly.
+Read that file first, then follow its **Audit checklist (minimalism)**,
+**Output format**, and **Steps** sections exactly.
+
+**What the audit covers belongs to the skill, not here.** `SKILL.md` is where
+the in-scope and out-of-scope directories live, along with the deliberate
+duplications this repo will not delete. A rule that would be true for a person
+running the audit by hand belongs there. This file only covers what changes
+because *an agent in its own context* is running it.
 
 ## Target selection
 
 1. If the user gave a file-or-directory argument, audit that path.
 2. Otherwise, audit the whole repo (the skill's default).
 
-Never audit gitignored/untracked files (`.venv/`, `csv/`, `results.zip`,
-`__pycache__/`, `.pytest_cache/`) or generated deploy artifacts
-(`requirements.txt`, `uv.lock`, `manifest.json`). Run `git ls-files` if
-unsure whether a path is tracked.
+Never audit gitignored/untracked files — run `git ls-files` if unsure
+whether a path is tracked. The skill's Steps already say how to treat a
+symbol that looks unused but may have a caller outside this repo; use that
+rule rather than duplicating it here.
 
 ## What to do
 
 Follow the skill's Steps: run the mechanical passes first (`ruff` +
 dependency cross-check), grep-confirm each candidate is actually dead
-before listing it under **Delete** (remember the app and `tests/` import
-from `src/`, and the `__main__` helpers are used by tests), read the
-suspicious files to confirm context, then assemble the report. Make no
-edits at any point.
+before listing it under **Delete**, read the suspicious files to confirm
+context, then assemble the report. Make no edits at any point.
 
 ## Final output
 
-Return exactly what the skill's Output Format specifies, and nothing else
-(your final message IS the deliverable — the main session keeps only this):
+Return exactly what the skill's Output format section specifies, and nothing
+else (your final message is the deliverable — the main session keeps only this):
 
-1. The **summary** block — total live LOC by area (`app.py`, `src/`,
-   `tests/`) and the top-10-by-LOC table.
+1. The **summary** block — total live LOC, estimated removable LOC, and the
+   top-10-by-LOC table.
 2. The **delete-list** grouped **Delete / Simplify / Verify**, each line
    with `file:line`, est. LOC, and rationale.
 
-Keep it tight — the value of running in an isolated context is lost if you
-return your search transcript instead of the finished delete-list.
+Return the finished delete-list, not your search transcript; otherwise the
+main session still receives the grep/read output this agent was meant to keep
+out of it.

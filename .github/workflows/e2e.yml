@@ -1,0 +1,57 @@
+name: e2e
+
+# Playwright tests driving the Shiny app in a real browser. Kept off the
+# pull-request path because the browser download and the ~15s background solve
+# in test_create_run_shows_results together cost more than a gate should.
+#
+# NOT a required status check — a scheduled workflow cannot report on a pull
+# request, so requiring it would block every merge. A break here surfaces on
+# the next push to main and is fixed with a new pull request.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 9 * * 1"   # Mondays, 09:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Chromium only. The app is not being tested for cross-browser
+      # rendering; it is being tested for whether a run completes and the
+      # results render. --with-deps pulls the system libraries the headless
+      # browser needs, which the runner image does not carry.
+      - name: Install Playwright
+        run: uv run playwright install --with-deps chromium
+
+      - name: Browser tests
+        run: uv run pytest -m e2e -q --tracing=retain-on-failure --screenshot=only-on-failure
+
+      # A failing browser test is close to unreadable without them.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-artifacts
+          path: |
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
