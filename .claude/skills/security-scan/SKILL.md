@@ -3,9 +3,8 @@ name: security-scan
 description: Scan for leaked secrets and insecure patterns — hardcoded passwords/tokens/keys, tracked .env or credential files, secrets in logs, and unsafe defaults. Drives ruff S rules with a git + grep fallback; report-only, makes no edits.
 disable-model-invocation: false
 allowed-tools: Read, Glob, Grep, Bash
-argument-hint: [file-or-directory]
+argument-hint: "[file-or-directory]"
 ---
-
 # Security Scan
 
 Find secrets and unsafe patterns before they get committed, and report a
@@ -13,34 +12,25 @@ findings list. **Report-only** — never edit or delete a secret yourself.
 Removing a secret and (critically) **rotating** it is a deliberate,
 human-driven step.
 
-This skill leans on tooling first, the same way `code-quality` leans on
-ruff, then fills gaps with `git` checks and `grep`:
+Run tooling first, the same way `code-quality-review` runs ruff, then cover
+the remaining cases with `git` checks and `grep`:
 
 1. **`ruff` `S` rules (flake8-bandit)** — mechanical insecure-pattern
    detection (hardcoded passwords, `eval`/`exec`, `shell=True`, unsafe
-   deserialization, weak hashes). Per-file exceptions are configured in
-   `pyproject.toml` (`tests/**` ignores `S101`).
-2. **`git ls-files` + `grep`** — tracked-credential-file checks and a
-   regex fallback for token shapes ruff misses.
+   deserialization). Configured in `pyproject.toml`.
+2. **`git ls-files` + `grep`** — tracked-credential-file checks and a regex
+   fallback for token shapes the tools miss.
 
-> **Context for this repo:** it is a pure-compute app — the LP model, the
-> Shiny UI, an in-memory SQLite store. It reads **no** environment
-> secrets and talks to no authenticated service at runtime (grep confirms
-> no `os.environ` / `getenv` credential reads). So there is no live
-> credential surface today; the job of this scan is to catch a secret or
-> credential file the moment one is *newly introduced*. (`detect-secrets`
-> is not set up here — there are no secrets to baseline. If the project
-> ever grows a credential surface, add `detect-secrets` + a committed
-> `.secrets.baseline` and fold it in as the primary content scanner.)
-
-Its lens (does this leak a credential or open a hole?) is distinct from
-`code-quality` (is it clear?) and `simplify-audit` (should it exist?).
+Security scan findings answer "does this leak a credential or open a hole?"
+`code-quality-review` answers "is it clear?" and `simplify-audit` answers
+"should it exist?"
 
 ## Arguments
 
 - **file-or-directory** (optional): Path to scan for secret *content* /
   insecure patterns. If omitted, scan the changed files
-  (`git diff --name-only HEAD`, plus untracked from `git status --short`).
+  (`git diff --name-only HEAD` unioned with `git ls-files --others
+  --exclude-standard` — union, not fallback).
   The tracked-file checks always run against the whole repo regardless of
   the argument.
 
@@ -50,71 +40,86 @@ Its lens (does this leak a credential or open a hole?) is distinct from
   or the given path).
 - **Tracked-file checks:** always whole-repo via `git ls-files` — a
   committed `.env` is a repo-wide fact, not a diff fact.
-- **Never scan** gitignored/untracked artifacts for content (`.venv/`,
-  `csv/`, `results.zip`, `__pycache__/`) — but DO still confirm they are
-  gitignored.
+- **Never scan gitignored or untracked artifacts** for content. Confirm
+  with `git ls-files` rather than guessing from directory names — but DO
+  still confirm those paths are actually ignored.
 
 ## What to check
 
-### 1. Tracked credential files (whole repo, always)
+### Tracked credential files (whole repo, always)
 
 Run `git ls-files` and flag any tracked file that should never be committed:
 
 - `.env`, `.env.local`, `.env.*` **except** `.env.example` / `.env.template`
-  / `.env.sample` (those are intended templates).
+  / `.env.sample` (those are intended templates — see the caveat below).
 - Private keys / certs: `*.pem`, `*.key`, `*.pfx`, `*.p12`, `*.keytab`,
   `id_rsa`, `id_dsa`.
 - Credential dumps: `credentials.json`, `service-account*.json`,
-  `*.kdbx`, `.netrc`, `.pgpass`, `.htpasswd`,
-  `rsconnect-python/` config directories (the Posit Connect Cloud deploy
-  is git-based and needs no key in the repo, but an rsconnect API-key
-  file must never be committed).
+  `*.kdbx`, `.netrc`, `.pgpass`, `.htpasswd`.
+- `rsconnect-python/` config directories. The Posit Connect Cloud deploy is
+  git-based and needs no key in the repo, but one written locally holds a
+  working API key. `.gitignore` covers the directory today; confirm that line
+  is still there, and flag any tracked file under it.
 
 A tracked secret file is **Must Fix**: `git rm --cached` it, add it to
 `.gitignore`, and **rotate** anything it exposed (it is already in history).
 
-### 2. `.gitignore` coverage
+### `.gitignore` coverage
 
-Confirm `.env` (and the patterns above) are gitignored, not merely
-absent. A secret that is untracked today but not ignored is one
-`git add -A` away from being committed. This repo's `.gitignore` already
-covers `.env`.
+Confirm `.env` and the patterns above are gitignored, not merely absent. A
+secret that is untracked today but not ignored can be committed by
+`git add -A`.
 
-### 3. Hardcoded secrets (target files) — grep scan
+### Hardcoded secrets — grep scan
+
+`detect-secrets` is not set up in this repo (see the caveats below), so the
+grep patterns below are the content scan rather than a supplement to one. Say
+that in the report — a clean result here is weaker evidence than a clean
+`detect-secrets` run, and claiming otherwise overstates what was checked.
 
 Scan for assignments of a secret-looking name to a literal, and known
-token shapes. Pattern reference (ripgrep regex):
+token shapes.
+These are in a fenced block rather than a table because a markdown cell needs
+`|` escaped as `\|`, and a pattern pasted with the escapes intact matches a
+literal pipe and reports clean — the silent no-op this scan exists to catch.
+`rg` is not installed here, so they are written for `grep -rniE`: `-i` supplies
+the case-insensitivity that a PCRE `(?i)` prefix would, and `grep -E` does not
+accept.
 
-| What | Pattern |
-|---|---|
-| Secret-named literal | `(?i)(pass(word|wd)?\|secret\|token\|api[_-]?key\|client[_-]?secret\|access[_-]?key\|auth[_-]?token\|private[_-]?key)\s*[:=]\s*["'][^"']{6,}["']` |
-| Private key block | `-----BEGIN (RSA \|EC \|OPENSSH \|DSA \|PGP )?PRIVATE KEY-----` |
-| AWS access key id | `AKIA[0-9A-Z]{16}` |
-| GitHub token | `gh[pousr]_[A-Za-z0-9]{36,}` or `github_pat_[A-Za-z0-9_]{60,}` |
-| Bearer/JWT | `(?i)bearer\s+[A-Za-z0-9._\-]{20,}` / `eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}` |
-| URL with embedded creds | `[a-z][a-z0-9+.\-]*://[^/\s:@]+:[^/\s:@]+@` |
-| Connection-string password | `(?i)(password\|pwd)=[^;"'\s]{4,}` |
+```
+# Secret-named literal
+(pass(word|wd)?|secret|token|api[_-]?key|client[_-]?secret|access[_-]?key|auth[_-]?token|private[_-]?key)[[:space:]]*[:=][[:space:]]*["'][^"']{6,}["']
+# Private key block
+-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----
+# Token shapes: AWS, GitHub, Slack, JWT
+AKIA[0-9A-Z]{16}
+gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,}
+xox[baprs]-[A-Za-z0-9-]{10,}
+bearer[[:space:]]+[A-Za-z0-9._-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}
+# Credentials in a URL or a connection string
+[a-z][a-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]:@]+@
+(password|pwd)=[^;"'[:space:]]{4,}
+```
 
-This app uses no credentials today, so **any** hit here is suspicious —
-open it and confirm whether it is a real secret or a false positive
-(a docstring, a test fixture, a variable named `token` holding something
-harmless). A confirmed hardcoded secret is a **Must Fix**.
+**Watch one of these match before trusting a clean run.** Point it at a file
+you have planted a fixture secret in; a pattern that finds nothing looks
+exactly like a repo that holds nothing.
 
-For each hit, **redact the value in your report** (show the variable name
-and first few chars only, never the full secret).
+For each hit, **redact the value in your report** — show the variable name
+and first few characters only, never the full secret.
 
-### 4. Secrets passed to logging or print
+### Secrets passed to logging or print
 
-ruff `S` does not cover this. This repo logs via the `logging` module
-(`src/LP.py`, `src/db.py`) — flag log/print statements that would
-interpolate a secret-bearing value. There is nothing sensitive logged
-today (the model logs capacities, metrics, and timings); the check exists
-to catch a regression if a credential is ever introduced.
+ruff `S` does not cover this. Flag log and print statements that
+interpolate a secret-bearing value: `Authorization` headers, anything named
+`*secret*` / `*token*` / `*password*`, or a whole `headers` / `auth` dict.
+Even at DEBUG a logged token ends up in the deployment's log store, which
+is usually retained longer and read by more people than the code.
 
-### 5. Insecure patterns — ruff `S` rules
+### Insecure patterns — ruff `S` rules
 
-These fire mechanically from `ruff check --select S`; cite the rule code in
-each finding (like `code-quality` cites ruff codes):
+`ruff check --select S` reports these patterns; cite the rule code in each
+finding (as `code-quality-review` cites ruff codes):
 
 - **Hardcoded password** — `S105` (string), `S106` (func arg), `S107`
   (default arg).
@@ -122,82 +127,122 @@ each finding (like `code-quality` cites ruff codes):
 - **Unsafe deserialization** — `S301` (`pickle`), `S506` (`yaml.load`
   without `SafeLoader`).
 - **Shell injection surface** — `S602`/`S604`/`S605` (`shell=True`),
-  `S607` (partial executable path), `S603` (subprocess untrusted input).
+  `S607` (partial executable path).
 - **TLS verification disabled** — `S501` (`verify=False`).
-- **SQL injection** — `S608` (string-built query). Note `src/db.py` builds
-  SQL with f-strings interpolating **`table_name` from the fixed
-  `self.table_names` list** (code-controlled constants) — that is safe;
-  a query interpolating user/app input would be a finding.
-- **Bind-all / temp files** — `S104` (bind all interfaces), `S108`
-  (insecure temp). The Docker/`shiny run` `--host 0.0.0.0` is intentional
-  for containers, not a code `S104`; judge the context.
-- **Other** — `S324` (weak hash), `S110` (try/except/pass — the
-  `ResultsDB` methods catch-and-log rather than pass; confirm they log).
+- **Subprocess without `shell=True`** — `S603`, on an argv built into a
+  variable rather than written as a literal list.
+- **SQL built by string interpolation** — `S608`.
+- **Other** — `S104` (bind all interfaces), `S324` (weak hash).
+
+`S603` and `S608` are the two that fire in this repo, both under per-file
+ignores that record why; `--select S` over the tracked tree is otherwise
+clean. The `--host 0.0.0.0` in `docker/Dockerfile` is deliberate for container
+serving — and note ruff never opens a Dockerfile, so `S104` cannot report it.
 
 Treat any `S`-rule hit on the target files as **at least Should Fix**;
 `S105-S107` (hardcoded secret) is **Must Fix**. Do not re-flag the
-configured ignores (`tests/**` → `S101`).
+configured ignores below.
 
 ## Configured exceptions (don't re-flag these)
 
-`pyproject.toml` (`[tool.ruff.lint.per-file-ignores]`) encodes the
-legitimate exceptions — respect it:
+`pyproject.toml` encodes the legitimate exceptions — respect them. **Read
+the actual per-file ignores rather than assuming**; they are the authority,
+and this section describes only the common case.
 
-- **`tests/**`** ignores `S101`: pytest's whole model is `assert`, and
-  test data is code-generated fixtures, not real creds.
+- **`tests/**` ignores `S101` only.** pytest tests use `assert`, so
+  `S101` is expected there. **The hardcoded-secret rules `S105-S107` stay
+  ACTIVE in tests**, because a real credential pasted into a fixture is
+  exactly as leaked as one in production code. Never suppress an
+  `S105-S107` hit under `tests/` as a configured exception — it is a
+  **Must Fix**.
+- **`src/db.py` ignores `S608` and `S101`.** It interpolates only fixed
+  table names from its own constants, and its `__main__` smoke test uses
+  `assert`. An `S608` anywhere else is a real finding.
+- **`scripts/**` ignores `S603`.** The deploy script shells out to
+  `uv`/`rsconnect` with hardcoded argument lists, no user input.
 
-## False-positive caveats specific to this repo
+## The `.env.example` caveat
 
-Apply these so the scan is accurate, not noisy:
+- **`.env.example` is supposed to be committed.** Do NOT flag it as a
+  tracked secret file. Instead, **open it and confirm every value is a
+  placeholder** — a real value leaked into the template IS a finding, and a
+  Must Fix.
 
-- **The SQLite store is `:memory:` and per-session** — no on-disk DB file
-  with data to leak.
-- **`src/db.py` f-string SQL** interpolates only fixed table names from
-  `self.table_names` (constants), so `S608` there is a false positive.
-  Real user input goes through parameterized queries (`?` placeholders) —
-  confirm that stays true.
-- **`--host 0.0.0.0`** in the Dockerfile / `shiny run` is deliberate for
-  container/deploy serving, not a leaked bind-all bug.
+## Repo-specific caveats
 
-## Output Format
+- **This is a pure-compute app with no live credential surface.** The LP
+  model, the Shiny UI and an in-memory SQLite store are the whole of it; it
+  reads no environment secrets and talks to no authenticated service. So the
+  job of this scan is to catch a credential the moment one is *newly
+  introduced*, not to audit an existing surface. Confirm the absence rather
+  than assuming it: grep for `os.environ` and `getenv` and say what you found.
+- **There is no `.env` and no `.env.example`.** A tracked `.env` appearing is
+  therefore a real finding rather than the usual false positive, and there is
+  no template to audit for a leaked real value.
+- **`detect-secrets` is not set up here, and that is deliberate** — there are
+  no secrets to baseline. No step below runs it, so say so in the report
+  rather than reporting a clean scan it did not perform. If this project ever grows a credential surface, add
+  `detect-secrets` and a committed `.secrets.baseline` and fold it in as the
+  primary content scanner.
+- **`src/db.py` builds SQL with f-strings, and `S608` there is a false
+  positive.** It interpolates only fixed table names from the
+  `self.table_names` constants — no user input reaches the query. The ignore
+  is scoped to that file; an `S608` anywhere else is a real finding.
+- **The SQLite store is `:memory:` and per-session**, so there is no on-disk
+  database file to leak and none to find tracked.
+- **`rsconnect-python/` config directories hold a working API key once
+  written.** The Posit Connect Cloud deploy is git-based and needs no key in
+  the repo, so one appearing is a finding.
 
-Group findings by severity, same buckets as `code-quality` so the
-code-reviewer agent's report stays uniform:
+Each caveat has to be anchored to something durable: a file that exists, a
+documented convention. A caveat naming a deleted module authorizes an
+exception that no longer applies.
+
+## Output format
+
+Group findings by severity, same buckets as `code-quality-review` so the
+`code-reviewer` agent's report stays uniform. **Number findings
+sequentially**, continuing from the review findings rather than restarting
+at 1, so a closing list of open items is unambiguous about which section
+each belongs to.
 
 ### Must Fix
-- Confirmed live secret in code, a tracked `.env`/key file, or an
-  `S105-S107` hit. **Always include the remediation:** remove it, move it to
-  an environment variable / `.env`, and **rotate the exposed credential**
-  (state explicitly that working-tree removal is not enough if it was ever
-  committed — it persists in git history; scrub with `git filter-repo` / BFG
-  if needed).
+- Confirmed live secret in code, a tracked `.env`/key file, a real value
+  in `.env.example`, or an `S105-S107` hit. **Always include the
+  remediation:** remove it, move it to an environment variable / `.env`,
+  and **rotate the exposed credential** — state explicitly that
+  working-tree removal is not enough if it was ever committed, since it
+  persists in git history; scrub with `git filter-repo` / BFG if needed.
 
 ### Should Fix
 - Other insecure-pattern `S`-rule hits (`verify=False`, `eval`/`exec`,
-  unsafe deserialization, `shell=True`, SQL injection) and secret logging.
+  unsafe deserialization, `shell=True`) and secret logging.
 
 ### Consider
-- Possible-but-uncertain matches, `.gitignore` gaps with nothing currently
-  leaked.
+- Possible-but-uncertain matches that might be fixtures, `.gitignore` gaps
+  with nothing currently leaked.
 
-For each finding: `file:line`, the rule code where applicable, what matched
-(**redacted**), why it is a risk, and the suggested fix. If the scan is
-clean, say "No security findings" explicitly so the clean result is on
-record.
+For each finding: a sequential number, `file:line`, the rule code where
+applicable, what matched (**redacted**), why it is a risk, and the
+suggested fix.
 
 ## Steps
 
 1. **Pick targets.** Path argument → that path. Otherwise
-   `git diff --name-only HEAD`; if empty, `git status --short` for
-   untracked files. The tracked-file checks (1–2) run whole-repo regardless.
-2. **Mechanical pass first:**
-   - `uv run ruff check --select S <targets>` — insecure patterns (check 5).
-     Cite each rule code.
-3. **Tracked-file check.** `git ls-files`, filter for the secret-file
-   patterns in check 1, applying the `.env.example` exception. Confirm
-   `.gitignore` coverage (check 2).
-4. **Content scan.** Run the check-3 grep patterns over the target files,
-   then check 4 (secret logging). Open each hit to confirm it is a real
-   secret vs a placeholder/fixture; redact before reporting.
+   `git diff --name-only HEAD` unioned with `git ls-files --others
+   --exclude-standard`. Union, not fallback — see `code-quality-review`.
+   The tracked-file and `.gitignore` checks run whole-repo regardless.
+2. **Mechanical passes first** — reuse the configured tooling:
+   - `uv run ruff check --select S <targets>` — insecure patterns. Cite
+     each rule code.
+3. **Tracked-file check.** `git ls-files`, filtered for the credential-file
+   patterns above, applying the `.env.example` exception. Confirm
+   `.gitignore` coverage.
+4. **Fallback content scan.** Run the grep patterns over the target files
+   for anything the tools did not surface, then check for secret logging.
+   Open each hit to confirm it is a real secret versus a placeholder or
+   fixture; redact before reporting.
 5. **Emit the report** grouped by severity. Make **no edits** — this skill
-   is report-only. If anything is Must Fix, lead with it.
+   is report-only. If anything is Must Fix, lead with it. If there are no
+   findings, say "No security findings" explicitly so the clean result is
+   on record.

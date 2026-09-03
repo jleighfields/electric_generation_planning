@@ -61,10 +61,10 @@ uv run python scripts/update_manifest.py
 
 ```bash
 uv run pytest -m "not slow and not e2e"   # fast unit tests (< 1s)
-uv run pytest -m slow                      # full LP solve integration tests (~15s)
+uv run pytest -m "slow and not e2e"        # full LP solve integration tests (~15s)
 uv run playwright install chromium         # one-time, for e2e
 uv run pytest -m e2e                        # browser end-to-end tests
-uv run pytest                              # everything
+uv run pytest                              # unit + slow LP solve (e2e deselected by addopts)
 ```
 
 E2E tests follow the

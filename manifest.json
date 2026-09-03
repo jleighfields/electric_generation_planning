@@ -6,7 +6,7 @@
     "entrypoint": "app"
   },
   "python": {
-    "version": "3.11.15",
+    "version": "3.11.14",
     "package_manager": {
       "name": "pip",
       "version": "26.1.2",
@@ -29,7 +29,7 @@
       "checksum": "a00a7eb65c0848c73726b0651a55c5f4"
     },
     "README.md": {
-      "checksum": "fc8475c924fbda9ceba30161e331c36c"
+      "checksum": "9f598e3039089663b0a85436d2adcec4"
     },
     "app.py": {
       "checksum": "b19a45cc9ba4e7923cade657285941cb"

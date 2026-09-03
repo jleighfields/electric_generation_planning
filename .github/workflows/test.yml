@@ -1,0 +1,49 @@
+name: test
+
+# The required check on pull requests into main. Runs everything but the
+# browser tests, `slow` included — the LP solve is worth paying for on a
+# gate, and it is the only test that exercises a full optimization.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# No paths: filter. A required status check that does not run leaves a pull
+# request permanently "expected" — unable to merge and unable to fail.
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails when uv.lock does not match pyproject.toml rather than
+      # resolving something else and testing a dependency set this repo does
+      # not claim.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      # addopts in pyproject.toml already deselects `e2e`; naming it here too
+      # means this job keeps doing the right thing if that default is relaxed.
+      - name: Tests
+        run: uv run pytest -m "not e2e" -q

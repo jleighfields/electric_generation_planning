@@ -83,7 +83,7 @@ ipython_config.py
 
 # pyenv
 #   .python-version is intentionally tracked so uv and Posit Connect Cloud
-#   agree on the interpreter (3.14).
+#   agree on the interpreter (3.11).
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
@@ -142,3 +142,7 @@ dmypy.json
 
 # ruff cache
 .ruff_cache/
+
+# holds a working Posit Connect API key once written locally; the deploy
+# itself is git-based and needs no key in the repo.
+rsconnect-python/

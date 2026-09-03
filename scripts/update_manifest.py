@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 EXCLUDES = [
     "refs",
     ".claude",
+    ".github",
     "tests",
     "docker",
     "scripts",
